@@ -2,8 +2,8 @@ use std::ops::{AddAssign, MulAssign};
 use alga::general::{Module, Ring, DynamicModule, SupersetOf};
 use num_traits::Num;
 use std::mem::swap;
-use crate::core::ode::{ODESolver, ODEState};
-use crate::core::ode::check_step;
+use crate::base::ode::{ODESolver, ODEState};
+use crate::base::ode::check_step;
 use alga::morphisms::{ModuleHomomorphism, MapTo, MapRef};
 
 pub trait ExponentialSplit<T, S, V>
@@ -13,8 +13,8 @@ where T:Ring + Copy + SupersetOf<f64>,
 {
     type L: Clone + MulAssign<S>;
     type U: Sized;
-    fn exp(l: &Self::L, u: &mut Self::U);
-    fn map_exp(u: &Self::U, x: & V, y: &mut V);
+    fn exp(l: &Self::L) -> Self::U;
+    fn map_exp(u: &Self::U, x: & V) -> V;
 }
 
 pub trait ExpSplitPair{
@@ -66,15 +66,15 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
     KA[0] *= dt0; KA[1] *= dt1.clone();
     KB[0] *= dt1;
 
-    SpA::exp(&KA[0],&mut KUA[0]);
-    SpB::exp(&KB[0], &mut KUB[0]);
+    let UA0 = SpA::exp(&KA[0]);
+    let UB0 = SpB::exp(&KB[0]);
 
     let (kv_init, kv_rest) = KV.split_at_mut(s);
     let kvf = &mut kv_rest[0];
 
-    SpA::map_exp(&KUA[0], x0, kvf);
-    SpB::map_exp(&KUB[0], &*kvf, &mut kv_init[0]);
-    SpA::map_exp(&KUA[0], &kv_init[0], xf);
+    *kvf = SpA::map_exp(&UA0, x0);
+    kv_init[0] = SpB::map_exp(&KUB[0], &*kvf);
+    *xf = SpA::map_exp(&KUA[0], &kv_init[0]);
 }
 //
 //fn linear_split_exp_step<Fun, FA, FB, LA, LB, UA, UB, S, T, V>(
