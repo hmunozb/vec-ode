@@ -7,6 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+approx = "0.3.2"
 num-traits = "0.2.8"
 alga = "0.9.1"
 nalgebra = "0.18.1"
+num-complex = "0.2.3"
+
+[patch.crates-io]
+alga = { git = "https://github.com/hmunozb/alga", branch = "morphisms" }
+nalgebra = {git = "https://github.com/hmunozb/nalgebra", branch = "dmatrix-vec-space"}
