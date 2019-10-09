@@ -6,6 +6,25 @@ use crate::core::ode::{ODESolver, ODEState};
 use crate::core::ode::check_step;
 use alga::morphisms::{ModuleHomomorphism, MapTo, MapRef};
 
+pub trait ExponentialSplit<T, S, V>
+where T:Ring + Copy + SupersetOf<f64>,
+      S: Ring + Copy + From<T>,
+      V: Clone
+{
+    type L: Clone + MulAssign<S>;
+    type U: Sized;
+    fn exp(l: &Self::L, u: &mut Self::U);
+    fn map_exp(u: &Self::U, x: & V, y: &mut V);
+}
+
+pub trait ExpSplitPair{
+    type T: Ring + Copy + SupersetOf<f64>;
+    type S: Ring + Copy + From<Self::T>;
+    type V: Clone;
+    type A: ExponentialSplit<Self::T, Self::S, Self::V>;
+    type B: ExponentialSplit<Self::T, Self::S, Self::V>;
+}
+
 pub trait OperatorSplitting{
     type T: Ring + Copy + SupersetOf<f64>;
     type S: Ring + Copy + From<Self::T>;
@@ -21,37 +40,41 @@ pub trait OperatorSplitting{
     fn map_exp_b(ub: &Self::UB, x: & Self::V, y: &mut Self::V);
 }
 
-pub fn linear_operator_split_exp_step<Sp: OperatorSplitting, Fun>(
-    f: &mut Fun, t: Sp::T, x0: &Sp::V, xf: &mut Sp::V, dt: Sp::T,
-    KV: &mut Vec<Sp::V>,KUA: &mut Vec<Sp::UA>, KUB: &mut Vec<Sp::UB>)
-where Fun: FnMut(Sp::T) -> (Sp::LA, Sp::LB)
+pub fn linear_operator_split_exp_step<SpA, SpB, T, S, V, Fun>(
+    f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T,
+    KV: &mut Vec<V>, KUA: &mut Vec<SpA::U>, KUB: &mut Vec<SpB::U>)
+where   Fun: FnMut(T) -> (SpA::L, SpB::L),
+        SpA :ExponentialSplit<T, S, V>,
+        SpB :ExponentialSplit<T, S, V>,
+        T: Ring + Copy + SupersetOf<f64>,
+        S: Ring + Copy + From<T>,
+        V: Clone
 {
-
     let k_len = KV.len();
     let s = k_len - 1;
     if s < 2 {
         panic!("linear_split_exp_step 2 stages is required")
     }
-    let mut KA :Vec<Sp::LA> = Vec::new();
-    let mut KB :Vec<Sp::LB> = Vec::new();
+    let mut KA :Vec<SpA::L> = Vec::new();
+    let mut KB :Vec<SpB::L> = Vec::new();
 
-    let dt0 = Sp::S::from(dt.clone() * Sp::T::from_subset(&0.5));
-    let dt1 = Sp::S::from(dt);
-    let (la, lb) : (Sp::LA, Sp::LB) = f(t);
+    let dt0 = S::from(dt.clone() * T::from_subset(&0.5));
+    let dt1 = S::from(dt);
+    let (la, lb) : (SpA::L, SpB::L) = f(t);
     KA.push(la.clone()); KA.push(la);
     KB.push(lb);
     KA[0] *= dt0; KA[1] *= dt1.clone();
     KB[0] *= dt1;
 
-    Sp::exp_a(&KA[0],&mut KUA[0]);
-    Sp::exp_b(&KB[0], &mut KUB[0]);
+    SpA::exp(&KA[0],&mut KUA[0]);
+    SpB::exp(&KB[0], &mut KUB[0]);
 
     let (kv_init, kv_rest) = KV.split_at_mut(s);
     let kvf = &mut kv_rest[0];
 
-    Sp::map_exp_a(&KUA[0], x0, kvf);
-    Sp::map_exp_b(&KUB[0], &*kvf, &mut kv_init[0]);
-    Sp::map_exp_a(&KUA[0], &kv_init[0], xf);
+    SpA::map_exp(&KUA[0], x0, kvf);
+    SpB::map_exp(&KUB[0], &*kvf, &mut kv_init[0]);
+    SpA::map_exp(&KUA[0], &kv_init[0], xf);
 }
 //
 //fn linear_split_exp_step<Fun, FA, FB, LA, LB, UA, UB, S, T, V>(
