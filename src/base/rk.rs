@@ -22,21 +22,21 @@ use crate::{ODESolverBase, check_step, ODEData};
 /// vectors do not have a compile time dimension, and so cannot implement Zero, Module, VectorSpace...
 /// at compile time. Thus, the only required traits for V are Clone, AddAssign with &V, and MulAssign
 /// with S
-fn rk_step<Fun, T, V, D, S1, S2>(
+fn rk_step<Fun, S, T, V, D, S1, S2>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, x_err: Option<&mut V>,
-    dt: T, tabl: &ButcherTableu<T, D, S1, S2>,  K: &mut Vec<V>) -> Result<(),()>
+    dt: T, tabl: &ButcherTableu<T, D, S1, S2>,  K: &mut Vec<V>, _phantom: PhantomData<S>) -> Result<(),()>
     where D: DimName, T: Scalar+Ring+Copy,
           //V: Clone,
-          V: DynamicModule,
+          //V: DynamicModule,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           S1: Storage<T, D, D>, S2: Storage<T, D, U1>,
-          V::Ring : From<T>+Copy+Zero,
+          S: Ring + From<T> + Copy,
           for <'b> V: AddAssign<&'b V>,
-          //V: MulAssign<S>
+          V: Clone + MulAssign<S>
     {
 
-    let _dt = V::Ring::from(dt);
-    let _zero =  <V::Ring as Zero>::zero();
+    let _dt = S::from(dt);
+    let _zero =  <S as Zero>::zero();
     //Check that the number of stages is consistent
     let k_len = K.len();
     let s = k_len - 1;
@@ -61,7 +61,7 @@ fn rk_step<Fun, T, V, D, S1, S2>(
             //*k *= _zero;
             //*k += k_stages.get(j).unwrap();
             k.clone_from(k_stages.get(j).unwrap());
-            *k *= V::Ring::from(*ac.index((0, j)));
+            *k *= S::from(*ac.index((0, j)));
             *xf += &*k;
         }
         *xf *= _dt.clone();
@@ -78,7 +78,7 @@ fn rk_step<Fun, T, V, D, S1, S2>(
         //*k *= _zero;
         //*k += &*ki;
         k.clone_from(ki);
-        *k *= V::Ring::from(*b.get(0).unwrap());
+        *k *= S::from(*b.get(0).unwrap());
         *xf += &*k;
     }
     *xf *= _dt.clone();
@@ -95,7 +95,7 @@ fn rk_step<Fun, T, V, D, S1, S2>(
                     for (b, ki) in e
                             .zip(k_stages.iter()){
                         k.clone_from(ki);
-                        *k *=  V::Ring::from(*b.get(0).unwrap());
+                        *k *=  S::from(*b.get(0).unwrap());
                         *xf += &*k;
                     }
                     *xf *= _dt.clone();
@@ -176,7 +176,7 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
     where T:Scalar+RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           V: DynamicModule,
-          V::Ring :  From<T> + Copy + Zero,
+          V::Ring : From<T> + Copy,
           for <'b> V: AddAssign<&'b V>{
     type TField=T;
     type RangeType=V;
@@ -205,7 +205,8 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
         dat.next_dt = dt;
         let res = rk_step(&mut dat.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, Some(&mut self.x_err),
-                          dat.next_dt.clone(), &self.tabl, &mut self.K);
+                          dat.next_dt.clone(), &self.tabl, &mut self.K,
+                          PhantomData::<V::Ring>);
         res
     }
 
@@ -219,41 +220,9 @@ impl<'a,V,Fun,T> ODESolver for RK45Solver<'a,V,Fun,T>
     where T:Scalar+RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           V: DynamicModule,
-          V::Ring :  From<T> + Copy + Zero,
+          V::Ring : From<T> + Copy,
           for <'b> V: AddAssign<&'b V>{
 
-//    fn step(&mut self) -> ODEState{
-////        let rem_t: T = self.tf.clone() - self.t.clone();
-////        let mut dt: T = T::zero();
-////        if rem_t.relative_eq(&T::zero(), T::default_epsilon(), T::default_max_relative()){
-////            return ODEState::Done;
-////        }
-////        if rem_t.clone() < self.h.clone(){
-////            dt = rem_t.clone();
-////        } else {
-////            dt = self.h.clone();
-////        }
-//
-//        let dt_opt = check_step(self.t.clone(), self.tf.clone(), self.h.clone());
-//        let mut next_dt;
-//        match dt_opt{
-//            None => return ODEState::Done,
-//            Some(dt) => next_dt = dt
-//        };
-//
-////        let res = rk_step(&mut self.f, self.t.clone(), &self.x, &mut self.next_x, Some(&mut self.x_err),
-////                          dt.clone(), &self.tabl, &mut self.K);
-//        let res = self.try_step(next_dt);
-////        self.x.clone_from(&self.next_x);
-////        self.t += dt;
-//
-//        match res{
-//            Ok(()) => {
-//                self.accept_step();
-//                ODEState::Ok },
-//            Err(()) => ODEState::Err
-//        }
-//    }
 }
 
 
