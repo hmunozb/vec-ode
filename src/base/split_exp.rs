@@ -141,6 +141,17 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
         self.dat.t += self.dat.next_dt.clone();
     }
 }
+
+impl<SpA, SpB, Fun, S, V, T> ODESolver
+for ExpSplitSolver<SpA, SpB, Fun, S, V, T>
+    where Fun: FnMut(T) -> (SpA::L, SpB::L),
+          SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
+          T: RealField,
+          S: Ring + Copy + From<T>,
+          V: Clone
+{
+
+}
 //
 //fn linear_split_exp_step<Fun, FA, FB, LA, LB, UA, UB, S, T, V>(
 //    f: &mut Fun, t: T, exp_a: &mut FA, exp_b: &mut FB,
