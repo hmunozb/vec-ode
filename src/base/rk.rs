@@ -185,6 +185,10 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
         (self.dat.t.clone(), & self.dat.x)
     }
 
+    fn into_current(self) -> (T, V){
+        self.dat.into_current()
+    }
+
     fn step_size(&self) -> Option<T>{
         let dat = &self.dat;
         check_step(dat.t.clone(), dat.tf.clone(), self.h.clone())

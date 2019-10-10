@@ -43,6 +43,10 @@ where V: Clone, T: Clone{
 
         Self{f, t0, tf, x0, t, x, next_x, next_dt}
     }
+
+    pub fn into_current(self) -> (T, V){
+        (self.t, self.x)
+    }
 }
 
 #[derive(Debug)]
@@ -105,6 +109,7 @@ pub trait ODESolverBase{
 
     //fn time_range(&self) -> (Self::TField, Self::TField);
     fn current(&self) -> (Self::TField, & Self::RangeType);
+    fn into_current(self) ->  (Self::TField, Self::RangeType);
     ///The next step size to attempt. Return None if integration has reached the end of the interval
     fn step_size(&self) -> Option<Self::TField>;
     /// Attempt a step with the given step size

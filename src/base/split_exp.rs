@@ -125,6 +125,11 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
     fn current(&self) -> (T, &V){
         (self.dat.t.clone(), &self.dat.x)
     }
+
+    fn into_current(self) -> (T, V){
+        self.dat.into_current()
+    }
+
     fn step_size(&self) -> Option<T>{
         let dat = &self.dat;
         check_step(dat.t.clone(), dat.tf.clone(), self.h.clone())
