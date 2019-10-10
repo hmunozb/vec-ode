@@ -18,6 +18,33 @@ pub enum ODEState{
     Err
 }
 
+pub struct ODEData<Fun, T, V>
+where V: Clone, T: Clone
+{
+    pub f: Fun,
+    pub t0: T,
+    pub tf: T,
+    pub x0: V,
+
+    pub t:  T,
+    pub x: V,
+
+    pub next_x: V,
+    pub next_dt: T,
+}
+
+impl<Fun, T, V> ODEData<Fun, T, V>
+where V: Clone, T: Clone{
+    pub fn new(f: Fun, t0: T, tf: T, x0: V) -> Self{
+        let x = x0.clone();
+        let t = t0.clone();
+        let next_x = x0.clone();
+        let next_dt = t0.clone();
+
+        Self{f, t0, tf, x0, t, x, next_x, next_dt}
+    }
+}
+
 #[derive(Debug)]
 pub struct ButcherTableu<T: Scalar, S: DimName, S1: Storage<T, S, S>,
                     S2: Storage<T, S, U1>> {
@@ -74,19 +101,42 @@ impl<T: Scalar, D: DimName, S1: Storage<T, D, D>,
 
 pub trait ODESolverBase{
     type TField: RealField;
-    type RangeType: DynamicModule;
+    type RangeType;
 
+    //fn time_range(&self) -> (Self::TField, Self::TField);
+    fn current(&self) -> (Self::TField, & Self::RangeType);
+    ///The next step size to attempt. Return None if integration has reached the end of the interval
+    fn step_size(&self) -> Option<Self::TField>;
+    /// Attempt a step with the given step size
     fn try_step(&mut self, dt: Self::TField) -> Result<(), ()>;
+    /// Accept the previously attempted step
     fn accept_step(&mut self);
 }
 
-pub trait ODESolver{
-    type TField: RealField;
-    type RangeType: DynamicModule;
+pub trait ODESolver : ODESolverBase{
+//    type TField: RealField;
+//    type RangeType: DynamicModule;
 
-    fn step(&mut self) -> ODEState;
+    fn step(&mut self) -> ODEState{
+        //let (t0, tf) = self.time_range();
+        //let (t, _ ) = self.current();
+        let dt_opt = self.step_size();
+        let mut next_dt;
+        match dt_opt{
+            None => return ODEState::Done,
+            Some(dt) => next_dt = dt
+        };
 
-    fn current(&self) -> (Self::TField, & Self::RangeType);
+        let res = self.try_step(next_dt);
+
+        match res{
+            Ok(()) => {
+                self.accept_step();
+                ODEState::Ok },
+            Err(()) => ODEState::Err
+        }
+    }
+
 
 }
 

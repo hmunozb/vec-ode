@@ -6,6 +6,7 @@ use nalgebra::{Scalar, RealField, DimName, U1, U6};
 use nalgebra::base::storage::Storage;
 use super::ode::{ODESolver, ODEState, ButcherTableu, ButcherTableuSlices};
 use std::marker::PhantomData;
+use crate::{ODESolverBase, check_step, ODEData};
 
 /// Implements a single step of the Runge-Kutta algorithm on the following data
 ///     t : The current time (type T: RealField)
@@ -136,14 +137,17 @@ pub struct RK45Solver<'a,V,Fun,T=f64>
             V::Ring : From<T>+Copy,
             for <'b> V: AddAssign<&'b V>
 {
-    f: Fun,
-    t0: T,
-    tf: T,
-    x0: V,
-
-    t:  T,
-    x: V,
-    next_x: V,
+//    f: Fun,
+//    t0: T,
+//    tf: T,
+//    x0: V,
+//
+//    t:  T,
+//    x: V,
+//    next_x: V,
+//    next_dt: T,
+//
+    dat: ODEData<Fun, T, V>,
     x_err: V,
     h: T,
     tabl: ButcherTableuSlices<'a, T, U6>,
@@ -158,19 +162,17 @@ impl<'a,V,Fun> RK45Solver<'a,V,Fun,f64>
         for <'b> V: AddAssign<&'b V>{
 
     pub fn new(f: Fun, t0: f64, tf: f64, x0: V, h: f64 ) -> Self{
-        let x = x0.clone();
-        let next_x = x0.clone();
+
         let x_err = x0.clone();
-        let t = t0.clone();
         let tabl = ButcherTableuSlices::from_slices(&rk45_ac, &rk45_b, Some(&rk45_berr), U6);
         let mut K: Vec<V> = Vec::new();
         K.resize(7, x0.clone());
-
-        RK45Solver{f, t0, tf, x0, t, x, next_x, x_err, h, tabl, K}
+        let dat = ODEData::new(f, t0, tf, x0);
+        RK45Solver{dat, x_err, h, tabl, K}
     }
 }
 
-impl<'a,V,Fun,T> ODESolver for RK45Solver<'a,V,Fun,T>
+impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
     where T:Scalar+RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           V: DynamicModule,
@@ -179,32 +181,75 @@ impl<'a,V,Fun,T> ODESolver for RK45Solver<'a,V,Fun,T>
     type TField=T;
     type RangeType=V;
 
-    fn step(&mut self) -> ODEState{
-        let rem_t: T = self.tf.clone() - self.t.clone();
-        let mut dt: T = T::zero();
-        if rem_t.relative_eq(&T::zero(), T::default_epsilon(), T::default_max_relative()){
-            return ODEState::Done;
-        }
-        if rem_t.clone() < self.h.clone(){
-            dt = rem_t.clone();
-        } else {
-            dt = self.h.clone();
-        }
-        let res = rk_step(&mut self.f, self.t.clone(), &self.x, &mut self.next_x, Some(&mut self.x_err),
-                          dt.clone(), &self.tabl, &mut self.K);
-
-        self.x.clone_from(&self.next_x);
-        self.t += dt;
-
-        match res{
-            Ok(()) => ODEState::Ok,
-            Err(()) => ODEState::Err
-        }
-    }
-
     fn current(&self) -> (T, &V){
-        (self.t.clone(), & self.x)
+        (self.dat.t.clone(), & self.dat.x)
     }
+
+    fn step_size(&self) -> Option<T>{
+        let dat = &self.dat;
+        check_step(dat.t.clone(), dat.tf.clone(), self.h.clone())
+    }
+
+    fn try_step(&mut self, dt: T) -> Result<(), ()>{
+//        let dt_opt = check_step(t, tf, dt);
+//        let mut next_dt;
+//        match dt_opt{
+//            None => return ODEState::Done,
+//            Some(dt) => self.next_dt = dt;
+//        };
+        let dat = &mut self.dat;
+        dat.next_dt = dt;
+        let res = rk_step(&mut dat.f, dat.t.clone(), &dat.x,
+                          &mut dat.next_x, Some(&mut self.x_err),
+                          dat.next_dt.clone(), &self.tabl, &mut self.K);
+        res
+    }
+
+    fn accept_step(&mut self){
+        self.dat.x.clone_from(&self.dat.next_x);
+        self.dat.t += self.dat.next_dt.clone();
+    }
+
+}
+impl<'a,V,Fun,T> ODESolver for RK45Solver<'a,V,Fun,T>
+    where T:Scalar+RealField,
+          Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
+          V: DynamicModule,
+          V::Ring :  From<T> + Copy + Zero,
+          for <'b> V: AddAssign<&'b V>{
+
+//    fn step(&mut self) -> ODEState{
+////        let rem_t: T = self.tf.clone() - self.t.clone();
+////        let mut dt: T = T::zero();
+////        if rem_t.relative_eq(&T::zero(), T::default_epsilon(), T::default_max_relative()){
+////            return ODEState::Done;
+////        }
+////        if rem_t.clone() < self.h.clone(){
+////            dt = rem_t.clone();
+////        } else {
+////            dt = self.h.clone();
+////        }
+//
+//        let dt_opt = check_step(self.t.clone(), self.tf.clone(), self.h.clone());
+//        let mut next_dt;
+//        match dt_opt{
+//            None => return ODEState::Done,
+//            Some(dt) => next_dt = dt
+//        };
+//
+////        let res = rk_step(&mut self.f, self.t.clone(), &self.x, &mut self.next_x, Some(&mut self.x_err),
+////                          dt.clone(), &self.tabl, &mut self.K);
+//        let res = self.try_step(next_dt);
+////        self.x.clone_from(&self.next_x);
+////        self.t += dt;
+//
+//        match res{
+//            Ok(()) => {
+//                self.accept_step();
+//                ODEState::Ok },
+//            Err(()) => ODEState::Err
+//        }
+//    }
 }
 
 
