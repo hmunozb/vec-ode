@@ -83,7 +83,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
 {
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T) -> Self{
         let mut K: Vec<V> = Vec::new();
-        K.resize(2, x0.clone());
+        K.resize(3, x0.clone());
         let dat = ODEData::new(t0, tf, x0);
 
         Self{f, dat, h, K, _phantom: PhantomData}
