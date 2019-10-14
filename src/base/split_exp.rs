@@ -119,7 +119,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
         let dat = &mut self.dat;
         dat.next_dt = dt;
 
-        linear_operator_split_exp_step(&mut self.f, dat.t,  & dat.x0, &mut dat.next_x,
+        linear_operator_split_exp_step(&mut self.f, dat.t,  & dat.x, &mut dat.next_x,
         dat.next_dt.clone(), &mut self.K, PhantomData::<(SpA,SpB)>)
     }
 
