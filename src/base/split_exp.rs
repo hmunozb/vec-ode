@@ -110,21 +110,10 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
     fn into_ode_data(self) -> ODEData<T, V>{
         self.dat
     }
-//    fn current(&self) -> (T, &V){
-//        (self.dat.t.clone(), &self.dat.x)
-//    }
-
-//    fn into_current(self) -> (T, V){
-//        self.dat.into_current()
-//    }
 
     fn step_size(&self) -> ODEStep<T>{
         self.dat.step_size(self.h.clone())
-//        let dat = &self.dat;
-//        match check_step(dat.t.clone(), dat.tf.clone(), self.h.clone()){
-//            Some(dt) => ODEStep::Step(dt),
-//            None => ODEStep::End
-//        }
+
     }
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
         let dat = &mut self.dat;
@@ -133,11 +122,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
         linear_operator_split_exp_step(&mut self.f, dat.t,  & dat.x0, &mut dat.next_x,
         dat.next_dt.clone(), &mut self.K, PhantomData::<(SpA,SpB)>)
     }
-//    fn accept_step(&mut self){
-//        self.dat.step_update();
-////        self.dat.x.clone_from(&self.dat.next_x);
-////        self.dat.t += self.dat.next_dt.clone();
-//    }
+
 }
 
 impl<SpA, SpB, Fun, S, V, T> ODESolver

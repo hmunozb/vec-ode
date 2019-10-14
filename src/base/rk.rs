@@ -139,15 +139,6 @@ pub struct RK45Solver<'a,V,Fun,T=f64>
             for <'b> V: AddAssign<&'b V>
 {
     f: Fun,
-//    t0: T,
-//    tf: T,
-//    x0: V,
-//
-//    t:  T,
-//    x: V,
-//    next_x: V,
-//    next_dt: T,
-//
     dat: ODEData<T, V>,
     x_err: V,
     h: T,
@@ -192,30 +183,11 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
         self.dat
     }
 
-//    fn current(&self) -> (T, &V){
-//        (self.dat.t.clone(), & self.dat.x)
-//    }
-//
-//    fn into_current(self) -> (T, V){
-//        self.dat.into_current()
-//    }
-
     fn step_size(&self) -> ODEStep<T>{
         self.dat.step_size(self.h.clone())
-//        let dat = &self.dat;
-//        match check_step(dat.t.clone(), dat.tf.clone(), self.h.clone()){
-//            Some(dt) => ODEStep::Step(dt),
-//            None => ODEStep::End
-//        }
     }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
-//        let dt_opt = check_step(t, tf, dt);
-//        let mut next_dt;
-//        match dt_opt{
-//            None => return ODEState::Done,
-//            Some(dt) => self.next_dt = dt;
-//        };
         let dat = &mut self.dat;
         dat.next_dt = dt;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
@@ -224,15 +196,6 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
                           PhantomData::<V::Ring>);
         res
     }
-
-//    fn accept_step(&mut self){
-//        self.dat.x.clone_from(&self.dat.next_x);
-//        self.dat.t += self.dat.next_dt.clone();
-//    }
-
-//    fn checkpoint(&mut self, end: bool){
-//        self.dat.checkpoint_update(end);
-//    }
 
 }
 impl<'a,V,Fun,T> ODESolver for RK45Solver<'a,V,Fun,T>

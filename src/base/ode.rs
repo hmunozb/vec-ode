@@ -59,7 +59,6 @@ where T: Clone + Copy
 pub struct ODEData<T, V>
 where V: Clone, T: Clone
 {
-    //pub f: Fun,
     pub t0: T,
     pub tf: T,
     pub x0: V,
@@ -94,25 +93,31 @@ where V: Clone, T: Clone + RealField {
         (self.t, self.x)
     }
 
+    /// Returns a step instructions given a default step size dt_max
+    /// If stepping by dt_max does not exceed the next checkpoint time or end time,
+    /// it is simply returned as the next step size. Otherwise, the largest possible step
+    /// is returned. The Checkpt instruction is then emitted until the checkpoint is updated
+    /// The End instruction is perpetually emitted if the integration reaches the final time.
     pub fn step_size(&self, dt_max: T) -> ODEStep<T>{
         let checkpt_t = match self.t_list.get(self.tgt_t){
             None => return ODEStep::End,
             Some(t) => t.clone()
         };
-
         let dt_opt = check_step(self.t.clone(), checkpt_t, dt_max);
         match dt_opt{
             Some(dt) => ODEStep::Step(dt),
-            None if self.tgt_t >= self.t_list.len()-1 => ODEStep::End,
+            None if self.tgt_t >= self.t_list.len() - 1 => ODEStep::End,
             None => ODEStep::Chkpt
         }
     }
 
+    /// Updates the current (t, x) to (next_x, t + next_dt)
     pub fn step_update(&mut self) {
         self.x.clone_from(&self.next_x);
         self.t += self.next_dt.clone();
     }
 
+    /// Updates the checkpoint index.
     pub fn checkpoint_update(&mut self, end: bool){
         self.tgt_t += 1;
     }
@@ -134,9 +139,6 @@ impl<'a, T, S > ButcherTableuSlices<'a, T, S>
 where T: Scalar, S:DimName{
     pub fn from_slices(ac: &[T], b: &[T], b_err: Option<&[T]>, s: S) -> Self{
         unsafe{
-            //
-            //Some(Matrix::from_data(SliceStorage::from_raw_parts(
-            //    b_err.map(|b| b.as_ptr() ), (S, U1), (U1, U1))))
             ButcherTableu{
                 ac: Matrix::from_data(SliceStorage::from_raw_parts(ac.as_ptr(),(s, s),(s, U1))),
                 b: Matrix::from_data(SliceStorage::from_raw_parts(b.as_ptr(), (s, U1), (U1, U1))),
@@ -203,31 +205,18 @@ pub trait ODESolverBase: Sized{
     /// Handle a step rejection. Adaptive solvers should adjust their step size and continue
     /// if possible. Rejection is an error for non-adaptive solvers
     fn reject_step(&mut self) -> ODEState{
-        let (t, v) =self.current();
+        let (t, v) = self.current();
         ODEState::Err(ODEError{msg: format!("Rejected step at time {}", t)})
     }
 }
 
 pub trait ODESolver : ODESolverBase{
-//    type TField: RealField;
-//    type RangeType: DynamicModule;
 
     fn handle_try_step(&mut self, step: ODEStep<Self::TField>) -> ODEStep<Self::TField>{
         step.map_dt(|dt| self.try_step(dt))
-//        if let Ok(()) = match step.clone(){ //Convert step attempts to errors if they fail
-//            ODEStep::Step(dt) => self.try_step(dt),
-//            ODEStep::Chkpt(dt) => self.try_step(dt),
-//            _ => Ok(()),
-//        }{
-//            step
-//        } else  {
-//            ODEStep::Err(step)
-//        }
     }
 
     fn step(&mut self) -> ODEState{
-        //let (t0, tf) = self.time_range();
-        //let (t, _ ) = self.current();
         let dt_opt = self.step_size();
         let res = self.handle_try_step(dt_opt);
         match res{
@@ -250,22 +239,7 @@ pub trait ODESolver : ODESolverBase{
                 ODEState::Err(e)
             }
         }
-//        let mut next_dt;
-//        match dt_opt{
-//            None => return ODEState::Done,
-//            Some(dt) => next_dt = dt
-//        };
-//
-//        let res = self.try_step(next_dt);
-//
-//        match res{
-//            Ok(()) => {
-//                self.accept_step();
-//                ODEState::Ok },
-//            Err(()) => ODEState::Err
-//        }
     }
-
 
 }
 
