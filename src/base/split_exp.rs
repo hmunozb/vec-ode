@@ -9,20 +9,20 @@ use crate::{ODEData, ODESolverBase, ODEError, ODEStep};
 use std::marker::PhantomData;
 
 pub trait ExponentialSplit<T, S, V>
-where T:Ring + Copy + SupersetOf<f64>,
+where T: Ring + Copy + SupersetOf<f64>,
       S: Ring + Copy + From<T>,
       V: Clone
 {
     type L: Clone + MulAssign<S>;
     type U: Sized;
-    fn exp(l: &Self::L) -> Self::U;
-    fn map_exp(u: &Self::U, x: & V) -> V;
+    fn exp(&mut self, l: &Self::L) -> Self::U;
+    fn map_exp(&mut self, u: &Self::U, x: & V) -> V;
 }
 
 
 pub fn linear_operator_split_exp_step<SpA, SpB, T, S, V, Fun>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T,
-    KV: &mut Vec<V>, _phantom: PhantomData<(SpA, SpB)>) -> Result<(), ODEError>
+    KV: &mut Vec<V>, sp_a : &mut SpA, sp_b: &mut SpB) -> Result<(), ODEError>
 where   Fun: FnMut(T) -> (SpA::L, SpB::L),
         SpA :ExponentialSplit<T, S, V>,
         SpB :ExponentialSplit<T, S, V>,
@@ -46,15 +46,15 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
     KA[0] *= dt0; KA[1] *= dt1.clone();
     KB[0] *= dt1;
 
-    let UA0 = SpA::exp(&KA[0]);
-    let UB0 = SpB::exp(&KB[0]);
+    let UA0 = sp_a.exp(&KA[0]);
+    let UB0 = sp_b.exp(&KB[0]);
 
     let (kv_init, kv_rest) = KV.split_at_mut(s);
     let kvf = &mut kv_rest[0];
 
-    *kvf = SpA::map_exp(&UA0, x0);
-    kv_init[0] = SpB::map_exp(&UB0, &*kvf);
-    *xf = SpA::map_exp(&UA0, &kv_init[0]);
+    *kvf = sp_a.map_exp(&UA0, x0);
+    kv_init[0] = sp_b.map_exp(&UB0, &*kvf);
+    *xf = sp_a.map_exp(&UA0, &kv_init[0]);
 
     Ok(())
 }
@@ -69,10 +69,12 @@ where
     V: Clone
 {
     f: Fun,
+    sp_a: SpA,
+    sp_b: SpB,
     dat: ODEData<T, V>,
     h: T,
     K: Vec<V>,
-    _phantom: PhantomData<(SpA, SpB, S)>
+    _phantom: PhantomData<S>
 }
 impl<SpA, SpB, Fun, S, V, T> ExpSplitSolver<SpA, SpB, Fun, S, V, T>
 where Fun: FnMut(T) -> (SpA::L, SpB::L),
@@ -81,12 +83,12 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
       S: Ring + Copy + From<T>,
       V: Clone
 {
-    pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T) -> Self{
+    pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T, sp_a: SpA, sp_b: SpB) -> Self{
         let mut K: Vec<V> = Vec::new();
         K.resize(3, x0.clone());
         let dat = ODEData::new(t0, tf, x0);
 
-        Self{f, dat, h, K, _phantom: PhantomData}
+        Self{f, sp_a, sp_b, dat, h, K, _phantom: PhantomData}
     }
 }
 
@@ -120,7 +122,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
         dat.next_dt = dt;
 
         linear_operator_split_exp_step(&mut self.f, dat.t,  & dat.x, &mut dat.next_x,
-        dat.next_dt.clone(), &mut self.K, PhantomData::<(SpA,SpB)>)
+        dat.next_dt.clone(), &mut self.K, &mut self.sp_a, &mut self.sp_b)
     }
 
 }
