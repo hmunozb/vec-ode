@@ -12,16 +12,54 @@ use nalgebra::{ArrayStorage, SliceStorage};
 use nalgebra::base::iter::RowIter;
 use std::borrow::Borrow;
 
+#[derive(Clone)]
+pub struct ODEError{
+    pub msg: String
+}
+
+impl ODEError{
+    pub fn new(s: &str) -> Self{
+        Self{msg: String::from(s)}
+    }
+}
+
+/// Marks the state of the ODE
+#[derive(Clone)]
 pub enum ODEState{
     Ok,
     Done,
-    Err
+    Err(ODEError)
 }
 
-pub struct ODEData<Fun, T, V>
+/// Marks the current ODE stepping instructions
+#[derive(Clone)]
+pub enum ODEStep<T:Clone+Copy>{
+    Step(T),    //Ordinary step by dt
+    Chkpt,      //Perform a checkpoint update
+    Reject,     //This step is rejected
+    End,        //Reached end of integration
+    Err(ODEError)
+}
+
+impl<T> ODEStep<T>
+where T: Clone + Copy
+{
+    fn map_dt<F>(self, mut f:  F)  -> ODEStep<T>
+    where F: FnMut(T)-> Result<(), ODEError> {
+        match self.clone(){
+            ODEStep::Step(dt)  =>
+                match f(dt) {   Ok(_) => ODEStep::Step(dt),
+                                Err(e) => ODEStep::Err(e) },
+            _ => self
+        }
+    }
+}
+
+/// Generic utility struct to group together ODE state variables
+pub struct ODEData<T, V>
 where V: Clone, T: Clone
 {
-    pub f: Fun,
+    //pub f: Fun,
     pub t0: T,
     pub tf: T,
     pub x0: V,
@@ -29,23 +67,54 @@ where V: Clone, T: Clone
     pub t:  T,
     pub x: V,
 
+    pub t_list: Vec<T>,
+    pub tgt_t: usize,
     pub next_x: V,
     pub next_dt: T,
 }
 
-impl<Fun, T, V> ODEData<Fun, T, V>
-where V: Clone, T: Clone{
-    pub fn new(f: Fun, t0: T, tf: T, x0: V) -> Self{
+impl<T, V> ODEData<T, V>
+where V: Clone, T: Clone + RealField {
+    pub fn new(t0: T, tf: T, x0: V) -> Self{
         let x = x0.clone();
         let t = t0.clone();
+        let mut t_list = vec![t0, tf];
+        let tgt_t = 0;
         let next_x = x0.clone();
         let next_dt = t0.clone();
 
-        Self{f, t0, tf, x0, t, x, next_x, next_dt}
+        Self{t0, tf, x0, t, x, t_list, tgt_t, next_x, next_dt}
+    }
+
+    pub fn current(&self) -> (T, &V){
+        (self.t, &self.x)
     }
 
     pub fn into_current(self) -> (T, V){
         (self.t, self.x)
+    }
+
+    pub fn step_size(&self, dt_max: T) -> ODEStep<T>{
+        let checkpt_t = match self.t_list.get(self.tgt_t){
+            None => return ODEStep::End,
+            Some(t) => t.clone()
+        };
+
+        let dt_opt = check_step(self.t.clone(), checkpt_t, dt_max);
+        match dt_opt{
+            Some(dt) => ODEStep::Step(dt),
+            None if self.tgt_t >= self.t_list.len()-1 => ODEStep::End,
+            None => ODEStep::Chkpt
+        }
+    }
+
+    pub fn step_update(&mut self) {
+        self.x.clone_from(&self.next_x);
+        self.t += self.next_dt.clone();
+    }
+
+    pub fn checkpoint_update(&mut self, end: bool){
+        self.tgt_t += 1;
     }
 }
 
@@ -103,43 +172,98 @@ impl<T: Scalar, D: DimName, S1: Storage<T, D, D>,
     }
 }
 
-pub trait ODESolverBase{
+pub trait ODESolverBase: Sized{
     type TField: RealField;
-    type RangeType;
+    type RangeType: Clone;
 
+    fn ode_data(&self) -> & ODEData<Self::TField, Self::RangeType>;
+    fn ode_data_mut(&mut self) -> &mut ODEData<Self::TField, Self::RangeType>;
+    fn into_ode_data(self) -> ODEData<Self::TField, Self::RangeType>;
     //fn time_range(&self) -> (Self::TField, Self::TField);
-    fn current(&self) -> (Self::TField, & Self::RangeType);
-    fn into_current(self) ->  (Self::TField, Self::RangeType);
+    fn current(&self) -> (Self::TField, & Self::RangeType){
+        self.ode_data().current()
+    }
+    fn into_current(self) ->  (Self::TField, Self::RangeType){
+        self.into_ode_data().into_current()
+    }
     ///The next step size to attempt. Return None if integration has reached the end of the interval
-    fn step_size(&self) -> Option<Self::TField>;
+    /// Return Checkpt if a checkpoint time is reached
+    fn step_size(&self) -> ODEStep<Self::TField>;
     /// Attempt a step with the given step size
-    fn try_step(&mut self, dt: Self::TField) -> Result<(), ()>;
+    fn try_step(&mut self, dt: Self::TField) -> Result<(), ODEError>;
     /// Accept the previously attempted step
-    fn accept_step(&mut self);
+    fn accept_step(&mut self){
+        self.ode_data_mut().step_update();
+    }
+
+    /// Any handling to be done when a checkpoint time is reached
+    fn checkpoint(&mut self, end: bool){
+        self.ode_data_mut().checkpoint_update(end);
+    }
+    /// Handle a step rejection. Adaptive solvers should adjust their step size and continue
+    /// if possible. Rejection is an error for non-adaptive solvers
+    fn reject_step(&mut self) -> ODEState{
+        let (t, v) =self.current();
+        ODEState::Err(ODEError{msg: format!("Rejected step at time {}", t)})
+    }
 }
 
 pub trait ODESolver : ODESolverBase{
 //    type TField: RealField;
 //    type RangeType: DynamicModule;
 
+    fn handle_try_step(&mut self, step: ODEStep<Self::TField>) -> ODEStep<Self::TField>{
+        step.map_dt(|dt| self.try_step(dt))
+//        if let Ok(()) = match step.clone(){ //Convert step attempts to errors if they fail
+//            ODEStep::Step(dt) => self.try_step(dt),
+//            ODEStep::Chkpt(dt) => self.try_step(dt),
+//            _ => Ok(()),
+//        }{
+//            step
+//        } else  {
+//            ODEStep::Err(step)
+//        }
+    }
+
     fn step(&mut self) -> ODEState{
         //let (t0, tf) = self.time_range();
         //let (t, _ ) = self.current();
         let dt_opt = self.step_size();
-        let mut next_dt;
-        match dt_opt{
-            None => return ODEState::Done,
-            Some(dt) => next_dt = dt
-        };
-
-        let res = self.try_step(next_dt);
-
+        let res = self.handle_try_step(dt_opt);
         match res{
-            Ok(()) => {
+            ODEStep::Step(_) =>{
                 self.accept_step();
-                ODEState::Ok },
-            Err(()) => ODEState::Err
+                ODEState::Ok
+            },
+            ODEStep::Chkpt =>{
+                self.checkpoint(false);
+                ODEState::Ok
+            },
+            ODEStep::Reject => {
+                self.reject_step()
+            }
+            ODEStep::End =>{
+                self.checkpoint(true);
+                ODEState::Done
+            },
+            ODEStep::Err(e) =>{
+                ODEState::Err(e)
+            }
         }
+//        let mut next_dt;
+//        match dt_opt{
+//            None => return ODEState::Done,
+//            Some(dt) => next_dt = dt
+//        };
+//
+//        let res = self.try_step(next_dt);
+//
+//        match res{
+//            Ok(()) => {
+//                self.accept_step();
+//                ODEState::Ok },
+//            Err(()) => ODEState::Err
+//        }
     }
 
 

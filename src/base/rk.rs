@@ -6,7 +6,7 @@ use nalgebra::{Scalar, RealField, DimName, U1, U6};
 use nalgebra::base::storage::Storage;
 use super::ode::{ODESolver, ODEState, ButcherTableu, ButcherTableuSlices};
 use std::marker::PhantomData;
-use crate::{ODESolverBase, check_step, ODEData};
+use crate::{ODESolverBase, check_step, ODEData, ODEError, ODEStep};
 
 /// Implements a single step of the Runge-Kutta algorithm on the following data
 ///     t : The current time (type T: RealField)
@@ -24,7 +24,8 @@ use crate::{ODESolverBase, check_step, ODEData};
 /// with S
 fn rk_step<Fun, S, T, V, D, S1, S2>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, x_err: Option<&mut V>,
-    dt: T, tabl: &ButcherTableu<T, D, S1, S2>,  K: &mut Vec<V>, _phantom: PhantomData<S>) -> Result<(),()>
+    dt: T, tabl: &ButcherTableu<T, D, S1, S2>,  K: &mut Vec<V>, _phantom: PhantomData<S>)
+        -> Result<(), ODEError>
     where D: DimName, T: Scalar+Ring+Copy,
           //V: Clone,
           //V: DynamicModule,
@@ -45,7 +46,7 @@ fn rk_step<Fun, S, T, V, D, S1, S2>(
     }
 
     //Calculate the first stage
-    f(t, x0, K.get_mut(0).unwrap())?;
+    f(t, x0, K.get_mut(0).unwrap());
 
     //Split the K vector into the stages vector and the entry used as an arithmetic register
     let (k_stages, k_work) = K.split_at_mut(s);
@@ -68,7 +69,7 @@ fn rk_step<Fun, S, T, V, D, S1, S2>(
         *xf += x0;
         let ki = k_stages.get_mut(i).unwrap();
         //Evaluate dx for this stage and store in ki
-        f(ti, xf, ki)?;
+        f(ti, xf, ki);
     };
 
     //Finally calculate xf
@@ -137,7 +138,7 @@ pub struct RK45Solver<'a,V,Fun,T=f64>
             V::Ring : From<T>+Copy,
             for <'b> V: AddAssign<&'b V>
 {
-//    f: Fun,
+    f: Fun,
 //    t0: T,
 //    tf: T,
 //    x0: V,
@@ -147,7 +148,7 @@ pub struct RK45Solver<'a,V,Fun,T=f64>
 //    next_x: V,
 //    next_dt: T,
 //
-    dat: ODEData<Fun, T, V>,
+    dat: ODEData<T, V>,
     x_err: V,
     h: T,
     tabl: ButcherTableuSlices<'a, T, U6>,
@@ -167,8 +168,8 @@ impl<'a,V,Fun> RK45Solver<'a,V,Fun,f64>
         let tabl = ButcherTableuSlices::from_slices(&rk45_ac, &rk45_b, Some(&rk45_berr), U6);
         let mut K: Vec<V> = Vec::new();
         K.resize(7, x0.clone());
-        let dat = ODEData::new(f, t0, tf, x0);
-        RK45Solver{dat, x_err, h, tabl, K}
+        let dat = ODEData::new(t0, tf, x0);
+        RK45Solver{f, dat, x_err, h, tabl, K}
     }
 }
 
@@ -181,20 +182,34 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
     type TField=T;
     type RangeType=V;
 
-    fn current(&self) -> (T, &V){
-        (self.dat.t.clone(), & self.dat.x)
+    fn ode_data(&self) -> &ODEData<T, V>{
+        &self.dat
+    }
+    fn ode_data_mut(&mut self) -> &mut ODEData<T, V>{
+        &mut self.dat
+    }
+    fn into_ode_data(self) -> ODEData<T, V>{
+        self.dat
     }
 
-    fn into_current(self) -> (T, V){
-        self.dat.into_current()
+//    fn current(&self) -> (T, &V){
+//        (self.dat.t.clone(), & self.dat.x)
+//    }
+//
+//    fn into_current(self) -> (T, V){
+//        self.dat.into_current()
+//    }
+
+    fn step_size(&self) -> ODEStep<T>{
+        self.dat.step_size(self.h.clone())
+//        let dat = &self.dat;
+//        match check_step(dat.t.clone(), dat.tf.clone(), self.h.clone()){
+//            Some(dt) => ODEStep::Step(dt),
+//            None => ODEStep::End
+//        }
     }
 
-    fn step_size(&self) -> Option<T>{
-        let dat = &self.dat;
-        check_step(dat.t.clone(), dat.tf.clone(), self.h.clone())
-    }
-
-    fn try_step(&mut self, dt: T) -> Result<(), ()>{
+    fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
 //        let dt_opt = check_step(t, tf, dt);
 //        let mut next_dt;
 //        match dt_opt{
@@ -203,17 +218,21 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
 //        };
         let dat = &mut self.dat;
         dat.next_dt = dt;
-        let res = rk_step(&mut dat.f, dat.t.clone(), &dat.x,
+        let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, Some(&mut self.x_err),
                           dat.next_dt.clone(), &self.tabl, &mut self.K,
                           PhantomData::<V::Ring>);
         res
     }
 
-    fn accept_step(&mut self){
-        self.dat.x.clone_from(&self.dat.next_x);
-        self.dat.t += self.dat.next_dt.clone();
-    }
+//    fn accept_step(&mut self){
+//        self.dat.x.clone_from(&self.dat.next_x);
+//        self.dat.t += self.dat.next_dt.clone();
+//    }
+
+//    fn checkpoint(&mut self, end: bool){
+//        self.dat.checkpoint_update(end);
+//    }
 
 }
 impl<'a,V,Fun,T> ODESolver for RK45Solver<'a,V,Fun,T>

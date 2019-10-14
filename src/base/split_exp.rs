@@ -5,7 +5,7 @@ use std::mem::swap;
 use crate::base::ode::{ODESolver, ODEState};
 use crate::base::ode::check_step;
 use alga::morphisms::{ModuleHomomorphism, MapTo, MapRef};
-use crate::{ODEData, ODESolverBase};
+use crate::{ODEData, ODESolverBase, ODEError, ODEStep};
 use std::marker::PhantomData;
 
 pub trait ExponentialSplit<T, S, V>
@@ -22,7 +22,7 @@ where T:Ring + Copy + SupersetOf<f64>,
 
 pub fn linear_operator_split_exp_step<SpA, SpB, T, S, V, Fun>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T,
-    KV: &mut Vec<V>, _phantom: PhantomData<(SpA, SpB)>) -> Result<(),()>
+    KV: &mut Vec<V>, _phantom: PhantomData<(SpA, SpB)>) -> Result<(), ODEError>
 where   Fun: FnMut(T) -> (SpA::L, SpB::L),
         SpA :ExponentialSplit<T, S, V>,
         SpB :ExponentialSplit<T, S, V>,
@@ -68,7 +68,8 @@ where
     S: Ring + Copy + From<T>,
     V: Clone
 {
-    dat: ODEData<Fun, T, V>,
+    f: Fun,
+    dat: ODEData<T, V>,
     h: T,
     K: Vec<V>,
     _phantom: PhantomData<(SpA, SpB, S)>
@@ -83,9 +84,9 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T) -> Self{
         let mut K: Vec<V> = Vec::new();
         K.resize(2, x0.clone());
-        let dat = ODEData::new(f, t0, tf, x0);
+        let dat = ODEData::new(t0, tf, x0);
 
-        Self{dat, h, K, _phantom: PhantomData}
+        Self{f, dat, h, K, _phantom: PhantomData}
     }
 }
 
@@ -100,29 +101,43 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
     type TField = T;
     type RangeType = V;
 
-    fn current(&self) -> (T, &V){
-        (self.dat.t.clone(), &self.dat.x)
+    fn ode_data(&self) -> &ODEData<T, V>{
+        &self.dat
     }
+    fn ode_data_mut(&mut self) -> &mut ODEData<T, V>{
+        &mut self.dat
+    }
+    fn into_ode_data(self) -> ODEData<T, V>{
+        self.dat
+    }
+//    fn current(&self) -> (T, &V){
+//        (self.dat.t.clone(), &self.dat.x)
+//    }
 
-    fn into_current(self) -> (T, V){
-        self.dat.into_current()
-    }
+//    fn into_current(self) -> (T, V){
+//        self.dat.into_current()
+//    }
 
-    fn step_size(&self) -> Option<T>{
-        let dat = &self.dat;
-        check_step(dat.t.clone(), dat.tf.clone(), self.h.clone())
+    fn step_size(&self) -> ODEStep<T>{
+        self.dat.step_size(self.h.clone())
+//        let dat = &self.dat;
+//        match check_step(dat.t.clone(), dat.tf.clone(), self.h.clone()){
+//            Some(dt) => ODEStep::Step(dt),
+//            None => ODEStep::End
+//        }
     }
-    fn try_step(&mut self, dt: T) -> Result<(), ()>{
+    fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
         let dat = &mut self.dat;
         dat.next_dt = dt;
 
-        linear_operator_split_exp_step(&mut dat.f, dat.t,  & dat.x0, &mut dat.next_x,
+        linear_operator_split_exp_step(&mut self.f, dat.t,  & dat.x0, &mut dat.next_x,
         dat.next_dt.clone(), &mut self.K, PhantomData::<(SpA,SpB)>)
     }
-    fn accept_step(&mut self){
-        self.dat.x.clone_from(&self.dat.next_x);
-        self.dat.t += self.dat.next_dt.clone();
-    }
+//    fn accept_step(&mut self){
+//        self.dat.step_update();
+////        self.dat.x.clone_from(&self.dat.next_x);
+////        self.dat.t += self.dat.next_dt.clone();
+//    }
 }
 
 impl<SpA, SpB, Fun, S, V, T> ODESolver
