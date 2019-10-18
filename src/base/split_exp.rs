@@ -8,15 +8,84 @@ use alga::morphisms::{ModuleHomomorphism, MapTo, MapRef};
 use crate::{ODEData, ODESolverBase, ODEError, ODEStep};
 use std::marker::PhantomData;
 
+/// Trait to define an exponential split for operator splitting solvers
+/// The linear operators must have linear combinations defined
 pub trait ExponentialSplit<T, S, V>
 where T: Ring + Copy + SupersetOf<f64>,
       S: Ring + Copy + From<T>,
       V: Clone
 {
-    type L: Clone + MulAssign<S>;
+    type L: Clone;  //+ MulAssign<S>;
     type U: Sized;
+
+    /// Returns the exponential of the linear operator
     fn exp(&mut self, l: &Self::L) -> Self::U;
+    /// Applies the exponential on a vector x
     fn map_exp(&mut self, u: &Self::U, x: & V) -> V;
+}
+
+
+/// Defines an exponential split exp(A+B), where A and B are known to be
+/// commutative operator, and performs an exponential action exp(A) exp(B)
+pub struct CommutativeExpSplit<T, S, V, SpA, SpB>
+where   T: Ring + Copy + SupersetOf<f64>,
+        S: Ring + Copy + From<T>,
+        V: Clone,
+        SpA: ExponentialSplit<T, S, V>,
+        SpB: ExponentialSplit<T, S, V>
+{
+    sp_a: SpA,
+    sp_b: SpB,
+    _phantom: PhantomData<(T, S, V)>
+}
+
+#[derive(Clone)]
+pub struct CommutativeExpL<A, B, S>
+where A: Clone, B: Clone, S: Clone
+{
+    pub a: A,
+    pub b: B,
+    _phantom: PhantomData<S>
+}
+
+impl<A, B, S> CommutativeExpL<A, B, S>
+where A: Clone, B: Clone, S: Clone
+{
+    pub fn new(a: A, b: B) -> Self{
+        Self{a, b, _phantom: PhantomData}
+    }
+}
+
+impl<A, B, S> MulAssign<S> for CommutativeExpL<A, B, S>
+where A: Clone + MulAssign<S>,
+      B: Clone + MulAssign<S>,
+      S: Clone{
+    fn mul_assign(&mut self, s: S){
+        self.a *= s.clone();
+        self.b *= s;
+    }
+}
+
+impl<T, S, V, SpA, SpB> ExponentialSplit<T, S, V>
+for CommutativeExpSplit<T, S, V, SpA, SpB>
+where T: Ring + Copy + SupersetOf<f64>,
+      S: Ring + Copy + From<T>,
+      V: Clone,
+      SpA: ExponentialSplit<T, S, V>,
+      SpB: ExponentialSplit<T, S, V>{
+    type L = CommutativeExpL<SpA::L, SpB::L, S>;
+    type U = (SpA::U, SpB::U);
+
+    fn exp(&mut self, l: &Self::L) -> Self::U{
+        let ua = self.sp_a.exp(&l.a);
+        let ub = self.sp_b.exp(&l.b);
+        (ua, ub)
+    }
+
+    fn map_exp(&mut self, u: &Self::U, x: &V) -> V{
+        self.sp_b.map_exp(&u.1, &self.sp_a.map_exp(&u.0, x))
+    }
+
 }
 
 
@@ -26,6 +95,7 @@ pub fn linear_operator_split_exp_step<SpA, SpB, T, S, V, Fun>(
 where   Fun: FnMut(T) -> (SpA::L, SpB::L),
         SpA :ExponentialSplit<T, S, V>,
         SpB :ExponentialSplit<T, S, V>,
+        SpA::L : MulAssign<S>, SpB::L : MulAssign<S>,
         T: Ring + Copy + SupersetOf<f64>,
         S: Ring + Copy + From<T>,
         V: Clone
@@ -64,6 +134,7 @@ where
     Fun: FnMut(T) -> (SpA::L, SpB::L),
     SpA :ExponentialSplit<T, S, V>,
     SpB :ExponentialSplit<T, S, V>,
+    SpA::L : MulAssign<S>, SpB::L : MulAssign<S>,
     T: Ring + Copy + SupersetOf<f64>,
     S: Ring + Copy + From<T>,
     V: Clone
@@ -79,6 +150,7 @@ where
 impl<SpA, SpB, Fun, S, V, T> ExpSplitSolver<SpA, SpB, Fun, S, V, T>
 where Fun: FnMut(T) -> (SpA::L, SpB::L),
       SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
+      SpA::L : MulAssign<S>, SpB::L : MulAssign<S>,
       T: RealField,
       S: Ring + Copy + From<T>,
       V: Clone
@@ -96,6 +168,7 @@ impl<SpA, SpB, Fun, S, V, T> ODESolverBase
 for ExpSplitSolver<SpA, SpB, Fun, S, V, T>
 where Fun: FnMut(T) -> (SpA::L, SpB::L),
       SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
+      SpA::L : MulAssign<S>, SpB::L : MulAssign<S>,
       T: RealField,
       S: Ring + Copy + From<T>,
       V: Clone
@@ -131,6 +204,7 @@ impl<SpA, SpB, Fun, S, V, T> ODESolver
 for ExpSplitSolver<SpA, SpB, Fun, S, V, T>
     where Fun: FnMut(T) -> (SpA::L, SpB::L),
           SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
+          SpA::L : MulAssign<S>, SpB::L : MulAssign<S>,
           T: RealField,
           S: Ring + Copy + From<T>,
           V: Clone
