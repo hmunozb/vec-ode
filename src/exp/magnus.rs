@@ -130,7 +130,7 @@ where       Fun: FnMut(T) -> Sp::L,
     fn try_step(&mut self, dt: T) -> Result<(), ODEError> {
         let dat = &mut self.dat;
         dat.next_dt = dt;
-        midpoint(&mut self.f, dat.t.clone(), &dat.x0,
+        midpoint(&mut self.f, dat.t.clone(), &dat.x,
                  &mut dat.next_x, dat.next_dt.clone(), &mut self.sp)
     }
 }
