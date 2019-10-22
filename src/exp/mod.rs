@@ -1,2 +1,5 @@
 pub mod split_exp;
-mod magnus;
+pub mod magnus;
+
+pub use split_exp::*;
+pub use magnus::MidpointExpLinearSolver;
