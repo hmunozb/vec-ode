@@ -44,7 +44,7 @@ pub enum ODEStep<T:Clone+Copy>{
 impl<T> ODEStep<T>
 where T: Clone + Copy
 {
-    fn map_dt<F>(self, mut f:  F)  -> ODEStep<T>
+    pub fn map_dt<F>(self, mut f:  F)  -> ODEStep<T>
     where F: FnMut(T)-> Result<(), ODEError> {
         match self.clone(){
             ODEStep::Step(dt)  =>
@@ -212,10 +212,16 @@ pub trait ODESolverBase: Sized{
 
 pub trait ODESolver : ODESolverBase{
 
+    /// If stepping, update the ode_data with the step size and attempt the step
+    /// For adaptive solvers, this should be overwritten to determine whether to reject
+    /// the attempted step and update the next step size.
     fn handle_try_step(&mut self, step: ODEStep<Self::TField>) -> ODEStep<Self::TField>{
-        step.map_dt(|dt| self.try_step(dt))
+        step.map_dt(|dt| {
+            self.ode_data_mut().next_dt = dt.clone();
+            self.try_step(dt)})
     }
 
+    /// Perform a single iteration of the ODE
     fn step(&mut self) -> ODEState{
         let dt_opt = self.step_size();
         let res = self.handle_try_step(dt_opt);

@@ -1,5 +1,5 @@
 use std::ops::{AddAssign, MulAssign};
-use alga::general::{Module, Ring, DynamicModule, SupersetOf, RealField};
+use alga::general::{Module, Ring, DynamicModule, SupersetOf, RealField, ComplexField};
 use num_traits::Num;
 use std::mem::swap;
 use crate::base::{ODESolver, ODEState};
@@ -22,6 +22,15 @@ where T: Ring + Copy + SupersetOf<f64>,
     fn exp(&mut self, l: &Self::L) -> Self::U;
     /// Applies the exponential on a vector x
     fn map_exp(&mut self, u: &Self::U, x: & V) -> V;
+}
+
+pub trait NormedExponentialSplit<T, S, V>
+    where T: Ring + Copy + SupersetOf<f64>,
+          S: Ring + Copy + From<T>,
+          V: Clone
+{
+    /// Calculates the norm of a vector x
+    fn norm(&self, x: &V) -> T;
 }
 
 pub trait Commutator<T, S, V> : ExponentialSplit<T, S, V>

@@ -189,7 +189,7 @@ impl<'a,V,Fun,T> ODESolverBase for RK45Solver<'a,V,Fun,T>
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
         let dat = &mut self.dat;
-        dat.next_dt = dt;
+//        dat.next_dt = dt;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, Some(&mut self.x_err),
                           dat.next_dt.clone(), &self.tabl, &mut self.K,
