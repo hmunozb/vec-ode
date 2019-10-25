@@ -44,34 +44,34 @@ fn magnus_42<Fun, T, S, V, Sp>(
 
     let mid_t : T = t + b1;
     let t_sl = [   mid_t - c_mid*dt,
-                            mid_t,
+                            //mid_t,
                             mid_t + c_mid*dt];
 
     let mut l_vec = (*f)(&t_sl);
 
     // ME 2
-    let mut w2 : Sp::L= sp.commutator(&l_vec[0], &l_vec[2]);
+    let mut w2 : Sp::L= sp.commutator(&l_vec[0], &l_vec[1]);
     w2 *= S::from(b2);
 
     // ME 1
     let mut w1: Sp::L = l_vec[0].clone();
-    w1 += &l_vec[2];
+    w1 += &l_vec[1];
     w1 *= S::from(b1);
 
-    //let u1 = sp.exp(&w1);
+    let u1 = sp.exp(&w1);
     // 4th order ME
     let mut w = w1;
     w += &w2;
 
     //Midpoint rule
-    let mut err_w1: Sp::L = l_vec[1].clone();
-    err_w1 *= S::from(b1);
+    //let mut err_w1: Sp::L = l_vec[1].clone();
+    //err_w1 *= S::from(b1);
 
     let u = sp.exp(&w);
-    let u_err = sp.exp(&err_w1);
+    //let u_err = sp.exp(&err_w1);
 
     *xf = sp.map_exp(&u, x0);
-    *x_err = sp.map_exp(&u_err, x0);
+    *x_err = sp.map_exp(&u1, x0);
     *x_err -= xf;
 
     Ok(())
