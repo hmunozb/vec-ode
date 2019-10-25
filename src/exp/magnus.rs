@@ -43,7 +43,9 @@ fn magnus_42<Fun, T, S, V, Sp>(
     let b2: T = dt * dt * T::from_subset(&b2_flt);
 
     let mid_t : T = t + b1;
-    let t_sl = [t - c_mid*dt, mid_t, t + c_mid*dt];
+    let t_sl = [   mid_t - c_mid*dt,
+                            mid_t,
+                            mid_t + c_mid*dt];
 
     let mut l_vec = (*f)(&t_sl);
 
@@ -56,6 +58,7 @@ fn magnus_42<Fun, T, S, V, Sp>(
     w1 += &l_vec[2];
     w1 *= S::from(b1);
 
+    //let u1 = sp.exp(&w1);
     // 4th order ME
     let mut w = w1;
     w += &w2;
