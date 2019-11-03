@@ -10,7 +10,9 @@ edition = "2018"
 approx = "0.3.2"
 num-traits = "0.2.8"
 alga = "0.9.1"
+itertools = "0.8"
 nalgebra = "0.18.1"
+ndarray = "0.13.0"
 num-complex = "0.2.3"
 
 [patch.crates-io]

@@ -72,6 +72,37 @@ where V: Clone, T: Clone
     pub next_dt: T,
 }
 
+/// Group together data needed by adaptive solvers
+pub struct ODEAdaptiveData<T, V>
+    where V: Clone, T: Clone
+{
+    pub dx: V,
+    pub atol: T,
+    pub rtol: T,
+    pub dx_norm: T,
+
+    pub alpha: T,
+    pub min_dx: T,
+    pub max_dx: T,
+    pub pow: T
+}
+
+impl<V> ODEAdaptiveData<f64, V>
+where V: Clone{
+    pub fn new(init_dx: V, order: f64, min_dx: f64, max_dx: f64) -> Self{
+        let atol = 1.0e-6;
+        let rtol = 1.0e-4;
+        let dx_norm = 0.0;
+        let alpha = 0.9;
+        let pow = order.recip();
+
+        Self{dx: init_dx, atol, rtol, dx_norm, alpha, min_dx, max_dx, pow}
+    }
+    pub fn with_alpha(self, alpha: f64) -> Self{
+        Self{alpha, ..self}
+    }
+}
+
 impl<T, V> ODEData<T, V>
 where V: Clone, T: Clone + RealField {
     pub fn new(t0: T, tf: T, x0: V) -> Self{
@@ -120,57 +151,6 @@ where V: Clone, T: Clone + RealField {
     /// Updates the checkpoint index.
     pub fn checkpoint_update(&mut self, end: bool){
         self.tgt_t += 1;
-    }
-}
-
-#[derive(Debug)]
-pub struct ButcherTableu<T: Scalar, S: DimName, S1: Storage<T, S, S>,
-                    S2: Storage<T, S, U1>> {
-    ac: Matrix<T, S, S, S1>,
-    b: Matrix<T, S, U1, S2>,
-    b_err: Option<Matrix<T, S, U1, S2>>
-}
-
-pub type ButcherTableuSlices<'a, T, S> =
-    ButcherTableu<T, S, SliceStorage<'a, T,  S, S,  S, U1>, SliceStorage<'a, T,  S, U1,  U1, U1>>;
-
-
-impl<'a, T, S > ButcherTableuSlices<'a, T, S>
-where T: Scalar, S:DimName{
-    pub fn from_slices(ac: &[T], b: &[T], b_err: Option<&[T]>, s: S) -> Self{
-        unsafe{
-            ButcherTableu{
-                ac: Matrix::from_data(SliceStorage::from_raw_parts(ac.as_ptr(),(s, s),(s, U1))),
-                b: Matrix::from_data(SliceStorage::from_raw_parts(b.as_ptr(), (s, U1), (U1, U1))),
-                b_err:  b_err.map(|b|
-                                      Matrix::from_data(SliceStorage::from_raw_parts(
-                                              b.as_ptr(), (s, U1), (U1, U1)))
-                                 )
-            }
-        }
-    }
-}
-
-impl<T: Scalar, D: DimName, S1: Storage<T, D, D>,
-    S2: Storage<T, D, U1>> ButcherTableu<T, D, S1, S2>{
-    pub fn num_stages(&self) -> usize{
-        self.b.len()
-    }
-
-    pub fn ac_iter(&self) -> RowIter<T, D, D, S1>{
-        self.ac.row_iter()
-    }
-
-    pub fn b_iter(&self) -> RowIter<T, D, U1, S2>{
-        self.b.row_iter()
-    }
-
-    pub fn b_err_iter(&self) -> Option<RowIter<T, D, U1, S2>>{
-        match &self.b_err{
-            None => None,
-            Some(b) => Some(b.row_iter())
-        }
-
     }
 }
 
