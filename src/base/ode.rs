@@ -1,16 +1,6 @@
-use alga::linear::{VectorSpace, FiniteDimVectorSpace};
-use alga::general::{RealField, RingCommutative, Module, Ring, DynamicModule};
+use alga::general::{RealField};
 use approx::RelativeEq;
-use nalgebra::{Scalar, Matrix, DimName, MatrixN, VectorN, DimNameMul, MatrixMN, Matrix5};
-use std::ops::{Mul, AddAssign};
 use num_traits::Zero;
-use alga::general::{Identity, Additive};
-use nalgebra::{NamedDim, U1, U6};
-use nalgebra::base::storage::Storage;
-
-use nalgebra::{ArrayStorage, SliceStorage};
-use nalgebra::base::iter::RowIter;
-use std::borrow::Borrow;
 
 #[derive(Clone)]
 pub struct ODEError{
@@ -25,8 +15,8 @@ impl ODEError{
 
 /// Marks the state of the ODE
 #[derive(Clone)]
-pub enum ODEState{
-    Ok,
+pub enum ODEState<T:Clone+Copy>{
+    Ok(ODEStep<T>),
     Done,
     Err(ODEError)
 }
@@ -184,7 +174,7 @@ pub trait ODESolverBase: Sized{
     }
     /// Handle a step rejection. Adaptive solvers should adjust their step size and continue
     /// if possible. Rejection is an error for non-adaptive solvers
-    fn reject_step(&mut self) -> ODEState{
+    fn reject_step(&mut self) -> ODEState<Self::TField>{
         let (t, v) = self.current();
         ODEState::Err(ODEError{msg: format!("Rejected step at time {}", t)})
     }
@@ -202,17 +192,17 @@ pub trait ODESolver : ODESolverBase{
     }
 
     /// Perform a single iteration of the ODE
-    fn step(&mut self) -> ODEState{
+    fn step(&mut self) -> ODEState<Self::TField>{
         let dt_opt = self.step_size();
         let res = self.handle_try_step(dt_opt);
-        match res{
+        match res.clone(){
             ODEStep::Step(_) =>{
                 self.accept_step();
-                ODEState::Ok
+                ODEState::Ok(res)
             },
             ODEStep::Chkpt =>{
                 self.checkpoint(false);
-                ODEState::Ok
+                ODEState::Ok(res)
             },
             ODEStep::Reject => {
                 self.reject_step()

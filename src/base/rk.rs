@@ -1,17 +1,25 @@
 use std::ops::{AddAssign, MulAssign};
 use itertools::Itertools;
 use num_traits::Zero;
-use alga::general::RealField;
-use alga::general::{DynamicModule, AbstractRingCommutative};
+use alga::general::{RealField, ClosedAdd};
+use alga::general::{DynamicModule};
 use alga::linear::DynamicVectorSpace;
-use alga::general::{Module, Ring, RingCommutative};
+use alga::general::{ Ring};
 use ndarray::{Ix1, Array1, Array2};
 use super::ode::{ODESolver, ODEState};
 use std::marker::PhantomData;
-use crate::{ODESolverBase, check_step, ODEData, ODEError, ODEStep};
+use crate::{ODESolverBase, ODEData, ODEError, ODEStep};
 
 use crate::dat::rk::{rk45_ac, rk45_b, rk45_berr};
 use ndarray::iter::Lanes;
+
+pub trait LinearCombination<S>: Sized{
+    fn scale(&mut self, k: S);
+    fn scalar_multiply_to(&self, k: S, target: &mut Self);
+    fn add_scalar_mul(&mut self, k: S, other: &Self);
+    fn add_assign_ref(&mut self, other: &Self);
+}
+
 
 #[derive(Debug)]
 pub struct ButcherTableu<T: RealField> {
@@ -28,9 +36,9 @@ impl<T: RealField> ButcherTableu<T>
         ButcherTableu{
             ac: Array2::from_shape_vec((s,s),
                 Vec::from(ac).into_iter().map_into().collect_vec()).unwrap(),
-            b: Array1::from_shape_vec((s),
+            b: Array1::from_shape_vec(s,
                 Vec::from(b).into_iter().map_into().collect_vec()).unwrap(),
-            b_err: b_err.map(|b|Array1::from_shape_vec((s),
+            b_err: b_err.map(|b|Array1::from_shape_vec(s,
                 Vec::from(b).into_iter().map_into().collect_vec()).unwrap())
         }
     }
@@ -289,7 +297,7 @@ mod tests{
 
         let x0 = Vector2::new(c64::from(1.0), c64::from(1.0));
         let mut solver = RK45Solver::new(g, 0., 2., x0.clone(), 0.0001);
-        while let ODEState::Ok = solver.step() {
+        while let ODEState::Ok(_) = solver.step() {
 
         }
         let (tf, xf) = solver.current();
@@ -308,7 +316,7 @@ mod tests{
         };
         let x0 = DVector::from_column_slice(&[1.0, 1.0]);
         let mut solver = RK45Solver::new(g, 0., 2., x0.clone(), 0.0001);
-        while let ODEState::Ok = solver.step() {
+        while let ODEState::Ok(_) = solver.step() {
 
         }
         let (tf, xf) = solver.current();
@@ -326,7 +334,7 @@ mod tests{
         };
         let x0 :f64 = 1.0;
         let mut solver = RK45Solver::new(g, 0., 2., x0, 0.0001);
-        while let ODEState::Ok = solver.step() {
+        while let ODEState::Ok(_) = solver.step() {
 
         }
         let (tf, xf) = solver.current();

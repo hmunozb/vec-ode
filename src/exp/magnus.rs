@@ -1,7 +1,7 @@
 use super::split_exp::{ExponentialSplit, Commutator};
-use alga::general::{Ring, SupersetOf, ClosedAdd, RealField, SubsetOf};
+use alga::general::{Ring, SupersetOf, RealField};
 use std::ops::{MulAssign, AddAssign, SubAssign};
-use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState};
+use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState, LinearCombination};
 use std::marker::PhantomData;
 use num_traits::Float;
 use crate::exp::NormedExponentialSplit;
@@ -10,14 +10,14 @@ fn midpoint<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T, sp: &mut Sp) -> Result<(), ODEError>
 where   Fun: FnMut(T) -> Sp::L,
         Sp : ExponentialSplit<T, S, V>,
-        Sp::L : MulAssign<S>,
+        Sp::L : LinearCombination<S>,
         T: RealField,
         S: Ring + Copy + From<T>,
         V: Clone
 {
     let t_mid = t + dt * T::from_subset(&0.5);
     let mut l = (*f)(t_mid);
-    l *= S::from(dt);
+    l.scale(S::from(dt));
     let u = sp.exp(&l);
     *xf = sp.map_exp(&u, x0);
 
@@ -30,7 +30,8 @@ fn magnus_42<Fun, T, S, V, Sp>(
 ) -> Result<(), ODEError>
     where   Fun: FnMut(&[T]) -> Vec<Sp::L>,
             Sp : Commutator<T, S, V>,
-            Sp::L : Clone + MulAssign<S>
+            Sp::L : Clone + LinearCombination<S>
+            + MulAssign<S>
                 + for <'b> AddAssign<&'b Sp::L>,
             T: RealField,
             S: Ring + Copy + From<T>,
@@ -55,8 +56,8 @@ fn magnus_42<Fun, T, S, V, Sp>(
 
     // ME 1
     let mut w1: Sp::L = l_vec[0].clone();
-    w1 += &l_vec[1];
-    w1 *= S::from(b1);
+    w1.add_assign_ref(&l_vec[1]);
+    w1.scale(S::from(b1));
 
     let u1 = sp.exp(&w1);
     // 4th order ME
@@ -255,8 +256,8 @@ impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
 
     }
 
-    fn reject_step(&mut self) -> ODEState{
-        ODEState::Ok
+    fn reject_step(&mut self) -> ODEState<T>{
+        ODEState::Ok(ODEStep::Reject)
     }
 }
 
