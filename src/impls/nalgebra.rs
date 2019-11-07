@@ -1,4 +1,4 @@
-use alga::general::{RealField, ClosedAdd, ClosedMul};
+use alga::general::{RealField, ClosedAdd, ClosedMul, ClosedSub};
 use nalgebra::{Scalar,Dim, Matrix, DMatrix};
 use num_complex::Complex;
 use num_traits::Float;
@@ -8,8 +8,8 @@ use crate::LinearCombination;
 use nalgebra::base::storage::StorageMut;
 
 impl<N, R, C, S, > LinearCombination<N> for Matrix<N, R, C, S>
-where N: Scalar + ClosedAdd + ClosedMul, R: Dim, C: Dim, S: StorageMut<N, R, C>
-
+where N: Scalar + ClosedAdd + ClosedSub + ClosedMul,
+      R: Dim, C: Dim, S: StorageMut<N, R, C>
 {
     fn scale(&mut self, k: N) {
         *self *= k;
@@ -29,5 +29,9 @@ where N: Scalar + ClosedAdd + ClosedMul, R: Dim, C: Dim, S: StorageMut<N, R, C>
 
     fn add_assign_ref(&mut self, other: &Self) {
         *self += other;
+    }
+
+    fn delta(&mut self, y: &Self) {
+        *self -= y;
     }
 }

@@ -1,10 +1,9 @@
-use super::split_exp::{ExponentialSplit, Commutator};
 use alga::general::{Ring, SupersetOf, RealField};
 use std::ops::{MulAssign, AddAssign, SubAssign};
 use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState, LinearCombination};
 use std::marker::PhantomData;
 use num_traits::Float;
-use crate::exp::NormedExponentialSplit;
+use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
 
 fn midpoint<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T, sp: &mut Sp) -> Result<(), ODEError>

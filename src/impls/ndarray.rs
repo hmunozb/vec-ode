@@ -1,10 +1,10 @@
-use alga::general::{ClosedAdd, ClosedMul};
+use alga::general::{ClosedAdd, ClosedMul, ClosedSub};
 use ndarray::{ArrayBase, DataMut, Dimension, ScalarOperand};
 
 use crate::LinearCombination;
 
 impl<A, S, D> LinearCombination<A> for ArrayBase<S, D>
-where   A: Copy + ClosedAdd + ClosedMul + ScalarOperand,
+where   A: Copy + ClosedAdd + ClosedSub + ClosedMul + ScalarOperand,
         S: DataMut<Elem=A>,
         D: Dimension
 {
@@ -23,5 +23,9 @@ where   A: Copy + ClosedAdd + ClosedMul + ScalarOperand,
 
     fn add_assign_ref(&mut self, other: &Self){
         *self += other;
+    }
+
+    fn delta(&mut self, y: &Self) {
+        *self -= y;
     }
 }

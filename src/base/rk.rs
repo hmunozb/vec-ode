@@ -18,6 +18,8 @@ pub trait LinearCombination<S>: Sized{
     fn scalar_multiply_to(&self, k: S, target: &mut Self);
     fn add_scalar_mul(&mut self, k: S, other: &Self);
     fn add_assign_ref(&mut self, other: &Self);
+    /// Subtracts the vector y from self
+    fn delta(&mut self, y: &Self);
 }
 
 

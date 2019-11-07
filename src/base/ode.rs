@@ -72,25 +72,35 @@ pub struct ODEAdaptiveData<T, V>
     pub dx_norm: T,
 
     pub alpha: T,
-    pub min_dx: T,
-    pub max_dx: T,
+    pub min_dt: T,
+    pub max_dt: T,
     pub pow: T
 }
 
-impl<V> ODEAdaptiveData<f64, V>
-where V: Clone{
-    pub fn new(init_dx: V, order: f64, min_dx: f64, max_dx: f64) -> Self{
-        let atol = 1.0e-6;
-        let rtol = 1.0e-4;
-        let dx_norm = 0.0;
-        let alpha = 0.9;
+impl<T, V> ODEAdaptiveData<T, V>
+where V: Clone, T: RealField{
+    pub fn new(init_dx: V, order: T, min_dt: T, max_dt: T) -> Self{
+        let atol = T::from_subset(&1.0e-6);
+        let rtol = T::from_subset(&1.0e-4);
+        let dx_norm = T::zero();
+        let alpha = T::from_subset(&0.9);
         let pow = order.recip();
 
-        Self{dx: init_dx, atol, rtol, dx_norm, alpha, min_dx, max_dx, pow}
+        Self{dx: init_dx, atol, rtol, dx_norm, alpha, min_dt, max_dt, pow}
     }
-    pub fn with_alpha(self, alpha: f64) -> Self{
+    pub fn new_with_defaults(init_dx: V, order: T) -> Self{
+        let min_dt = T::from_subset(&1.0e-6);
+        let max_dt = T::from_subset(&1.0);
+        Self::new(init_dx, order, min_dt, max_dt)
+    }
+    pub fn with_alpha(self, alpha: T) -> Self{
         Self{alpha, ..self}
     }
+
+    pub fn step_size_mul(&self, f: T) -> T{
+        self.alpha * T::powf(f, self.pow)
+    }
+
 }
 
 impl<T, V> ODEData<T, V>

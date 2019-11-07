@@ -1,5 +1,7 @@
 use std::ops::{MulAssign, AddAssign};
-use alga::general::{Ring, SupersetOf, RealField, ComplexField};
+use alga::general::{Ring, SupersetOf, RealField, ComplexField, SubsetOf};
+use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
+use crate::exp::cfm::cfm_exp;
 use crate::base::{ODESolver};
 use crate::{ODEData, ODESolverBase, ODEError, ODEStep};
 use crate::base::LinearCombination;
@@ -7,40 +9,8 @@ use std::marker::PhantomData;
 use nalgebra::{Scalar};
 use ndarray::{ ArrayView1, ArrayView2};
 use itertools::Itertools;
+use num_complex::Complex;
 
-/// Trait to define an exponential split for operator splitting solvers
-/// The linear operators must have linear combinations defined
-pub trait ExponentialSplit<T, S, V>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
-      V: Clone
-{
-    type L: Clone + LinearCombination<S>;  //+ MulAssign<S>;
-    type U: Sized;
-
-    /// Returns the exponential of the linear operator
-    fn exp(&mut self, l: &Self::L) -> Self::U;
-    /// Applies the exponential on a vector x
-    fn map_exp(&mut self, u: &Self::U, x: & V) -> V;
-}
-
-pub trait NormedExponentialSplit<T, S, V>
-    where T: Ring + Copy + SupersetOf<f64>,
-          S: Ring + Copy + From<T>,
-          V: Clone
-{
-    /// Calculates the norm of a vector x
-    fn norm(&self, x: &V) -> T;
-}
-
-pub trait Commutator<T, S, V> : ExponentialSplit<T, S, V>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
-      V: Clone
-{
-    /// Compute the commutator of the two linear operators
-    fn commutator(&self, la: &Self::L, lb: &Self::L) -> Self::L;
-}
 
 
 /// Defines an exponential split exp(A+B), where A and B are known to be
@@ -60,7 +30,7 @@ where   T: Ring + Copy + SupersetOf<f64>,
 }
 
 #[derive(Clone)]
-pub struct CommutativeExpL<A, B, S>
+pub struct DirectSumL<A, B, S>
 where A: Clone, B: Clone, S: Clone
 {
     pub a: A,
@@ -68,7 +38,7 @@ where A: Clone, B: Clone, S: Clone
     _phantom: PhantomData<S>
 }
 
-impl<A, B, S> CommutativeExpL<A, B, S>
+impl<A, B, S> DirectSumL<A, B, S>
 where A: Clone, B: Clone, S: Clone
 {
     pub fn new(a: A, b: B) -> Self{
@@ -76,7 +46,7 @@ where A: Clone, B: Clone, S: Clone
     }
 }
 
-impl<A, B, S: Clone> LinearCombination<S> for CommutativeExpL<A, B, S>
+impl<A, B, S: Clone> LinearCombination<S> for DirectSumL<A, B, S>
 where   A : Clone + LinearCombination<S>,
         B : Clone + LinearCombination<S>
 {
@@ -99,9 +69,14 @@ where   A : Clone + LinearCombination<S>,
         self.a.add_assign_ref(&other.a);
         self.b.add_assign_ref(&other.b);
     }
+
+    fn delta(&mut self, y: &Self) {
+        self.a.delta(&y.a);
+        self.b.delta(&y.b);
+    }
 }
 
-impl<A, B, S> MulAssign<S> for CommutativeExpL<A, B, S>
+impl<A, B, S> MulAssign<S> for DirectSumL<A, B, S>
 where A: Clone + MulAssign<S>,
       B: Clone + MulAssign<S>,
       S: Clone{
@@ -119,8 +94,12 @@ where T: Ring + Copy + SupersetOf<f64>,
       SpA: ExponentialSplit<T, S, V>,
       SpB: ExponentialSplit<T, S, V>
 {
-    type L = CommutativeExpL<SpA::L, SpB::L, S>;
+    type L = DirectSumL<SpA::L, SpB::L, S>;
     type U = (SpA::U, SpB::U);
+
+    fn lin_zero(&self) -> Self::L{
+        DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
+    }
 
     fn exp(&mut self, l: &Self::L) -> Self::U{
         let ua = self.sp_a.exp(&l.a);
@@ -143,9 +122,81 @@ where T: Ring + Copy + SupersetOf<f64>,
       SpB: Commutator<T, S, V>{
 
     fn commutator(&self, l1: &Self::L, l2: &Self::L) -> Self::L{
-        CommutativeExpL::new(   self.sp_a.commutator(&l1.a, &l2.a),
-                                self.sp_b.commutator(&l1.b, &l2.b))
+        DirectSumL::new(self.sp_a.commutator(&l1.a, &l2.a),
+                        self.sp_b.commutator(&l1.b, &l2.b))
     }
+}
+
+
+
+/// Implements an exponential consisting of split SpA and SpB
+/// over complex scalars
+#[derive(Clone)]
+pub struct SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
+    where   T: Ring + Copy + SupersetOf<f64>,
+            S: Ring + Copy + From<T>,
+            V: Clone,
+            SpA: ExponentialSplit<T, S, V>,
+            SpB: ExponentialSplit<T, S, V>
+{
+    sp_a: SpA,
+    sp_b: SpB,
+    _phantom: PhantomData<(T, S, V)>
+}
+
+
+
+impl<T, V, SpA, SpB> ExponentialSplit<T, Complex<T>, V>
+for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
+    where T: RealField,
+          V: Clone,
+          SpA: ExponentialSplit<T, Complex<T>, V>,
+          SpA::L : Clone + LinearCombination<Complex<T>>,
+          SpB::L : Clone + LinearCombination<Complex<T>>,
+          SpB: ExponentialSplit<T, Complex<T>, V>
+{
+    type L = DirectSumL<SpA::L, SpB::L, Complex<T>>;
+    type U = (SpA::U, [SpB::U; 3]);
+
+    fn lin_zero(&self) -> Self::L{
+        DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
+    }
+
+    fn exp(&mut self, l: &Self::L) -> Self::U{
+        use crate::dat::split_complex::SEMI_COMPLEX_O4_B as b_arr;
+
+        let mut la1 = l.a.clone();
+        la1.scale(Complex::from(T::from_subset(&0.25)));
+        let lb1 = l.b.clone();
+        let mut lb_arr = [lb1.clone(), lb1.clone(), lb1];
+        lb_arr[0].scale(b_arr[0].to_superset());
+        lb_arr[1].scale(b_arr[1].to_superset());
+        lb_arr[2].scale(b_arr[2].to_superset());
+
+        let ua = self.sp_a.exp(&la1);
+        let ub_arr= [self.sp_b.exp(&lb_arr[0]),
+            self.sp_b.exp(&lb_arr[1]),
+            self.sp_b.exp(&lb_arr[2])
+        ];
+
+        (ua, ub_arr)
+    }
+
+    fn map_exp(&mut self, u: &Self::U, x: &V) -> V{
+        let y1 = self.sp_a.map_exp(
+            &u.0,&self.sp_b.map_exp(&u.1[0], x));
+        let y2 = self.sp_a.map_exp(
+            &u.0,&self.sp_b.map_exp(&u.1[1], &y1));
+        drop(y1);
+        let y3 = self.sp_a.map_exp(
+            &u.0,&self.sp_b.map_exp(&u.1[2], &y2));
+        drop(y2);
+        let y4 = self.sp_a.map_exp(
+            &u.0,&self.sp_b.map_exp(&u.1[1], &y3));
+        drop(y3);
+        self.sp_b.map_exp(&u.1[0], &y4)
+    }
+
 }
 
 /// Evaluates one step of the midpoint method for a splitting SpA and SpB
@@ -192,36 +243,7 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
     Ok(())
 }
 
-///
-/// Evaluates the linear combination of operators k := a.m
-/// Then evaluates the exponential action x1 := exp(k) x0 with the splitting sp
-///
-fn split_cfm_exp<'a, Sp, T, S, V>(
-    x0: &V, x1: &mut V, dt: T, m: &Vec<Sp::L>, k: &mut Sp::L, temp: &mut Sp::L,
-    a: ArrayView1<'a, S>, sp: &mut Sp
-)
-where   Sp: ExponentialSplit<T, S, V>,
-        Sp::L : LinearCombination<S>,// + MulAssign<S> + for <'b> AddAssign<&'b Sp::L>,
-        T: Ring + Copy + SupersetOf<f64>,
-        S: Scalar + Ring + Copy + From<T>,
-        V: Clone
-{
-//    m[0].clone_into(k);
-//    *k *= a[0].clone();
-    m[0].scalar_multiply_to(a[0].clone(), k);
-    for (ai, mi) in a.iter().skip(1)
-            .zip(m.iter().skip(1)){
-        k.add_scalar_mul(ai.clone(), mi);
-//        m.clone_into(temp);
-//        *temp *= *ai;
-//        *k += temp;
-    }
-    k.scale(S::from(dt));
-    //*k *= S::from(dt);
-    let u = sp.exp(&*k);
-    *x1 = sp.map_exp(&u, x0);
 
-}
 
 ///
 /// Evaluates one step of the BAB exponential split
@@ -258,33 +280,13 @@ where
     let (va, vb) = (*f)(&t_arr);
     KV[0] = x0.clone();
     for i in 0..s{
-        split_cfm_exp(&KV[i], &mut tail[0], dt,&vb, &mut KB[0],
-                      &mut KB_tail[0],sigma.slice(s![i,..]), sp_b );
-        split_cfm_exp(&tail[0], &mut KV[i+1], dt,&va, &mut KA[0],
-                      &mut KA_tail[1], rho.slice(s![i,..]), sp_a);
-//        let bi = vb[0].clone();
-//        bi *= sigma.index((i,0));
-//        for j in 1..k{
-//            KB[0] = vb[j].clone();
-//            KB[0] *= sigma.index((i, j));
-//            bi += KB[0];
-//        }
-//        let ub = sp_b.exp(&bi);
-//        tail[0] = sp_b.map_exp(&ub, &KV[i]);
-
-//        let ai = va[0].clone();
-//        ai *= rho.index((i, 0));
-//        for j in 1..k {
-//            KA[0] = va[j].clone();
-//            KA[0] *= rho.index((i, j));
-//            ai += KA[0];
-//        }
-//        let ua = sp_a.exp(&ai);
-//        KV[i+1] = sp_a.map_exp(&ua, &tail[0]);
-
+        cfm_exp(&KV[i], &mut tail[0], dt, &vb, &mut KB[0],
+                &mut KB_tail[0], sigma.slice(s![i,..]), sp_b );
+        cfm_exp(&tail[0], &mut KV[i+1], dt, &va, &mut KA[0],
+                &mut KA_tail[1], rho.slice(s![i,..]), sp_a);
     }
-    split_cfm_exp(&KV[s], xf, dt,&vb, &mut KB[0],
-                  &mut KB_tail[0],sigma.slice(s![s,..]), sp_b );
+    cfm_exp(&KV[s], xf, dt, &vb, &mut KB[0],
+            &mut KB_tail[0], sigma.slice(s![s,..]), sp_b );
     Ok(())
 }
 
@@ -396,3 +398,4 @@ pub struct ExpSplitCFMSolver<SpA, SpB, Fun, S, V, T>
     K: Vec<V>,
     _phantom: PhantomData<S>
 }
+
