@@ -11,7 +11,7 @@ use std::mem::swap;
 use crate::dat::cfqm::{CFM_R4_J2_GL, CFM_R2_J1_GL};
 use crate::dat::quad::C_GAUSS_LEGENDRE_4;
 use std::ops::SubAssign;
-use crate::ODESolver;
+use crate::{ODESolver, AdaptiveODESolver};
 
 ///
 /// Evaluates the linear combination of operators k := a.m dt
@@ -110,7 +110,6 @@ pub struct ExpCFMSolver<Sp, Fun, S, V, T>
     sp: Sp,
     dat: ODEData<T, V>,
     adaptive_dat: ODEAdaptiveData<T, V>,
-    h: T,
     K: Vec<V>,
     KA: Vec<Sp::L>,
     c: Vec<T>,
@@ -138,15 +137,18 @@ where
                 .map(|x|S::from(T::from_subset(x)))
                 .collect_vec()
             ).unwrap();
-        let alph_err = Array2::from_shape_vec((2,1),
+        let alph_err = Array2::from_shape_vec((1,2),
              CFM_R2_J1_GL.iter()
                  .map(|x|S::from(T::from_subset(x)))
                  .collect_vec()
             ).unwrap();
-        let dat = ODEData::new(t0, tf, x0.clone());
+        let mut dat = ODEData::new(t0, tf, x0.clone());
+        dat.next_dt = h;
+        dat.h = h;
         let adaptive_dat = ODEAdaptiveData::new_with_defaults(
             x0, T::from_subset(&3.0));
-        Self{f, sp, dat, adaptive_dat, h, K, KA, c, alpha, alph_err}
+
+        Self{f, sp, dat, adaptive_dat, K, KA, c, alpha, alph_err}
     }
 }
 
@@ -172,13 +174,13 @@ impl<Sp, Fun, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, S, V, T>
     }
 
     fn step_size(&self) -> ODEStep<T>{
-        self.dat.step_size(self.h.clone())
+        self.dat.step_size(self.dat.h)
     }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError> {
         let dat = &mut self.dat;
         dat.next_dt = dt;
-        cfm_general(&mut self.f, dat.t,&dat.x, &mut dat.next_x, self.h, &self.c, self.alpha.view(),
+        cfm_general(&mut self.f, dat.t,&dat.x, &mut dat.next_x, dt, &self.c, self.alpha.view(),
         &mut self.K, &mut self.KA, &mut self.sp, Some(&mut self.adaptive_dat.dx),
                     Some(self.alph_err.view()))
     }
@@ -204,12 +206,27 @@ impl<Sp, Fun, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, S, V, T>
         if let ODEStep::Step(_) = step.clone(){
             ad.dx_norm = self.sp.norm(&ad.dx);
             let f = ad.rtol / ad.dx_norm;
-            self.h = ad.step_size_mul(f) * self.h;
+            self.dat.h = ad.step_size_mul(f) * self.dat.h;
             if f <= T::one(){
                 return ODEStep::Reject;
             }
         }
 
         step
+    }
+}
+
+impl<Sp, Fun, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, S, V, T>
+    where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
+                Sp :NormedExponentialSplit<T, S, V>,
+                T: RealField + SupersetOf<f64>,
+                S: Ring + Copy + From<T>,
+                V: Clone + for <'b> SubAssign<&'b V>{
+    fn ode_adapt_data(&self) -> &ODEAdaptiveData<T, V> {
+        &self.adaptive_dat
+    }
+
+    fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<T, V> {
+        &mut self.adaptive_dat
     }
 }

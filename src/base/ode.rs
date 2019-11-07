@@ -60,6 +60,7 @@ where V: Clone, T: Clone
     pub tgt_t: usize,
     pub next_x: V,
     pub next_dt: T,
+    pub h: T,
 }
 
 /// Group together data needed by adaptive solvers
@@ -113,7 +114,7 @@ where V: Clone, T: Clone + RealField {
         let next_x = x0.clone();
         let next_dt = t0.clone();
 
-        Self{t0, tf, x0, t, x, t_list, tgt_t, next_x, next_dt}
+        Self{t0, tf, x0, t, x, t_list, tgt_t, next_x, next_dt, h: t0}
     }
 
     pub fn current(&self) -> (T, &V){
@@ -229,7 +230,51 @@ pub trait ODESolver : ODESolverBase{
 
 }
 
-pub trait AdaptiveODESolver: ODESolverBase{
+pub trait AdaptiveODESolver<T: RealField>: ODESolverBase<TField=T>{
+    fn ode_adapt_data(&self) -> & ODEAdaptiveData<T, Self::RangeType>;
+    fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<T, Self::RangeType>;
+
+    fn with_step_range(mut self, dt_min: T, dt_max: T) -> Self{
+        if dt_min <= T::zero() || dt_max <= T::zero() || dt_max <= dt_min {
+            panic!("Invalid step range: ({}, {})", dt_min, dt_max);
+        }
+
+        let dt_range = (dt_min, dt_max);
+        let h = T::sqrt(dt_min*dt_max);
+        {
+            let ad = self.ode_adapt_data_mut();
+            ad.min_dt = dt_min;
+            ad.max_dt = dt_max;
+        }
+        {
+            let dat = self.ode_data_mut();
+            dat.h = h;
+        }
+
+        self
+    }
+
+    fn with_init_step(mut self, h: T) -> Self{
+        let ad = self.ode_adapt_data_mut();
+        if h < ad.min_dt || h > ad.max_dt{
+            panic!("Step {} is not inside the range ({}, {})",
+                   h, ad.min_dt, ad.max_dt);
+        }
+        let mut dat = self.ode_data_mut();
+        dat.h = h;
+        self
+    }
+
+    fn with_tolerance(mut self, atol: T, rtol: T) -> Self {
+        if atol <= T::zero() || rtol <= T::zero(){
+            panic!("Invalid tolerances: atol={}, rtol={}", atol, rtol);
+        }
+        let ad = self.ode_adapt_data_mut();
+        ad.atol = atol;
+        ad.rtol = rtol;
+        self
+    }
+
 
 }
 
