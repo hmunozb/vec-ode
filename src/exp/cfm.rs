@@ -14,11 +14,11 @@ use std::ops::SubAssign;
 use crate::ODESolver;
 
 ///
-/// Evaluates the linear combination of operators k := a.m
+/// Evaluates the linear combination of operators k := a.m dt
 /// Then evaluates the exponential action x1 := exp(k) x0 with the splitting sp
 ///
 pub fn cfm_exp<'a, Sp, T, S, V>(
-    x0: &V, x1: &mut V, dt: T, m: &Vec<Sp::L>, k: &mut Sp::L, temp: &mut Sp::L,
+    x0: &V, x1: &mut V, dt: T, m: &Vec<Sp::L>, k: &mut Sp::L,
     a: ArrayView1<'a, S>, sp: &mut Sp
 )
     where   Sp: ExponentialSplit<T, S, V>,
@@ -63,32 +63,35 @@ pub fn cfm_general<'a, Sp, T, S, V, Fun>(
     };
     let s = alpha.nrows();
 
-    let (KV, tail) = KV.split_at_mut(s+1);
-    let (KA, KA_tail) = KA.split_at_mut(1);
+    let (KV, tail) = KV.split_at_mut(s);
+    //let (KA, KA_tail) = KA.split_at_mut(1);
 
     let t_arr = c.iter().map(|ci| t + (*ci)*dt).collect_vec();
 
     let va = (*f)(&t_arr);
-    KV[0] = x0.clone();
-    for i in 0..s{
-        cfm_exp(&KV[i], &mut tail[0], dt, &va, &mut KA[0],
-                &mut KA_tail[0], alpha.slice(s![i,..]), sp );
-        swap(&mut tail[0], &mut KV[i+1]);
+
+    cfm_exp(x0, &mut KV[0], dt, &va, &mut KA[0],
+            alpha.slice(s![0,..]), sp );
+    for i in 1..s{
+        cfm_exp(&KV[i-1], &mut tail[0], dt, &va, &mut KA[0],
+                 alpha.slice(s![i,..]), sp );
+        swap(&mut tail[0], &mut KV[i]);
     }
-    swap(&mut KV[s+1], xf);
+    swap(&mut KV[s-1], xf);
 
     if let (Some(x_err), Some(alph_err)) = (x_err, alph_err){
         let s_err = alph_err.nrows();
         if s_err > s || alph_err.ncols() != k{
             panic!("split_cfm: Incompatible array dimensions for alph_err");
         }
-        KV[0] = x0.clone();
-        for i in 0..s_err{
-            cfm_exp(&KV[i], &mut tail[0], dt, &va, &mut KA[0],
-                    &mut KA_tail[0], alph_err.slice(s![i,..]), sp );
-            swap(&mut tail[0], &mut KV[i+1]);
+        cfm_exp(x0, &mut KV[0], dt, &va, &mut KA[0],
+                alph_err.slice(s![0,..]), sp );
+        for i in 1..s_err{
+            cfm_exp(&KV[i-1], &mut tail[0], dt, &va, &mut KA[0],
+                     alph_err.slice(s![i,..]), sp );
+            swap(&mut tail[0], &mut KV[i]);
         }
-        swap(&mut KV[s_err+1], x_err);
+        swap(&mut KV[s_err-1], x_err);
         *x_err -= &*xf;
     }
 
@@ -126,7 +129,7 @@ where
         let mut K: Vec<V> = Vec::new();
         let mut KA: Vec<Sp::L> = Vec::new();
         K.resize(3, x0.clone());
-        KA.resize_with(2, | | sp.lin_zero());
+        KA.resize_with(1, | | sp.lin_zero());
         let c = C_GAUSS_LEGENDRE_4.iter()
             .map(|x| T::from_subset(x))
             .collect_vec();

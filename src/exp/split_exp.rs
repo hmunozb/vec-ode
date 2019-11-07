@@ -281,12 +281,12 @@ where
     KV[0] = x0.clone();
     for i in 0..s{
         cfm_exp(&KV[i], &mut tail[0], dt, &vb, &mut KB[0],
-                &mut KB_tail[0], sigma.slice(s![i,..]), sp_b );
+                 sigma.slice(s![i,..]), sp_b );
         cfm_exp(&tail[0], &mut KV[i+1], dt, &va, &mut KA[0],
-                &mut KA_tail[1], rho.slice(s![i,..]), sp_a);
+                 rho.slice(s![i,..]), sp_a);
     }
     cfm_exp(&KV[s], xf, dt, &vb, &mut KB[0],
-            &mut KB_tail[0], sigma.slice(s![s,..]), sp_b );
+             sigma.slice(s![s,..]), sp_b );
     Ok(())
 }
 
