@@ -113,6 +113,18 @@ where T: Ring + Copy + SupersetOf<f64>,
 
 }
 
+impl<T, S, V, SpA, SpB> NormedExponentialSplit<T, S, V>
+for CommutativeExpSplit<T, S, V, SpA, SpB>
+    where T: Ring + Copy + SupersetOf<f64>,
+          S: Ring + Copy + From<T>,
+          V: Clone,
+          SpA: NormedExponentialSplit<T, S, V>,
+          SpB: ExponentialSplit<T, S, V>{
+    fn norm(&self, x: &V) -> T {
+        self.sp_a.norm(x)
+    }
+}
+
 impl<T, S, V, SpA, SpB> Commutator<T, S, V>
 for CommutativeExpSplit<T, S, V, SpA, SpB>
 where T: Ring + Copy + SupersetOf<f64>,
@@ -197,6 +209,19 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
         self.sp_b.map_exp(&u.1[0], &y4)
     }
 
+}
+
+impl<T, V, SpA, SpB> NormedExponentialSplit<T, Complex<T>, V>
+for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
+    where T: RealField,
+          V: Clone,
+          SpA: NormedExponentialSplit<T, Complex<T>, V>,
+          SpA::L : Clone + LinearCombination<Complex<T>>,
+          SpB::L : Clone + LinearCombination<Complex<T>>,
+          SpB: ExponentialSplit<T, Complex<T>, V>{
+    fn norm(&self, x: &V) -> T {
+        self.sp_a.norm(x)
+    }
 }
 
 /// Evaluates one step of the midpoint method for a splitting SpA and SpB

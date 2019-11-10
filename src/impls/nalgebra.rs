@@ -4,7 +4,7 @@ use num_complex::Complex;
 use num_traits::Float;
 use std::ops::{Add, Mul};
 
-use crate::LinearCombination;
+use crate::{LinearCombination};
 use nalgebra::base::storage::StorageMut;
 
 impl<N, R, C, S, > LinearCombination<N> for Matrix<N, R, C, S>

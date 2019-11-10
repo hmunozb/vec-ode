@@ -98,15 +98,17 @@ pub fn cfm_general<'a, Sp, T, S, V, Fun>(
     Ok(())
 }
 
-pub struct ExpCFMSolver<Sp, Fun, S, V, T>
+pub struct ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     where
         Fun: FnMut(&[T]) -> Vec<Sp::L>,
-        Sp :ExponentialSplit<T, S, V>,
+        NormFn: Fn(&V) -> T,
+        Sp : ExponentialSplit<T, S, V>,
         T: RealField,
         S: Ring + Copy + From<T>,
         V: Clone
 {
     f: Fun,
+    norm: NormFn,
     sp: Sp,
     dat: ODEData<T, V>,
     adaptive_dat: ODEAdaptiveData<T, V>,
@@ -117,14 +119,15 @@ pub struct ExpCFMSolver<Sp, Fun, S, V, T>
     alph_err: Array2<S>
 }
 
-impl<Sp, Fun, S, V, T> ExpCFMSolver<Sp, Fun, S, V, T>
+impl<Sp, Fun, NormFn, S, V, T> ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
 where
     Fun: FnMut(&[T]) -> Vec<Sp::L>,
-    Sp : NormedExponentialSplit<T, S, V>,
+    NormFn: Fn(&V) -> T,
+    Sp : ExponentialSplit<T, S, V>,
     T: RealField + SupersetOf<f64>,
     S: Ring + Copy + From<T>,
     V: Clone + for <'b> SubAssign<&'b V>{
-    pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T, sp: Sp) -> Self{
+    pub fn new(f: Fun, norm: NormFn, t0: T, tf: T, x0: V, h: T, sp: Sp) -> Self{
         let mut K: Vec<V> = Vec::new();
         let mut KA: Vec<Sp::L> = Vec::new();
         K.resize(3, x0.clone());
@@ -148,14 +151,15 @@ where
         let adaptive_dat = ODEAdaptiveData::new_with_defaults(
             x0, T::from_subset(&3.0));
 
-        Self{f, sp, dat, adaptive_dat, K, KA, c, alpha, alph_err}
+        Self{f, norm, sp, dat, adaptive_dat, K, KA, c, alpha, alph_err}
     }
 }
 
 
-impl<Sp, Fun, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, S, V, T>
+impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
-                Sp : NormedExponentialSplit<T, S, V>,
+                NormFn: Fn(&V) -> T,
+                Sp : ExponentialSplit<T, S, V>,
                 T: RealField + SupersetOf<f64>,
                 S: Ring + Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>
@@ -190,9 +194,10 @@ impl<Sp, Fun, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, S, V, T>
     }
 }
 
-impl<Sp, Fun, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, S, V, T>
+impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
-                Sp :NormedExponentialSplit<T, S, V>,
+                NormFn: Fn(&V) -> T,
+                Sp : ExponentialSplit<T, S, V>,
                 T: RealField + SupersetOf<f64>,
                 S: Ring + Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>
@@ -204,7 +209,7 @@ impl<Sp, Fun, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, S, V, T>
             self.try_step(dt)});
         let ad = &mut self.adaptive_dat;
         if let ODEStep::Step(_) = step.clone(){
-            ad.dx_norm = self.sp.norm(&ad.dx);
+            ad.dx_norm = (self.norm)(&ad.dx);
             let f = ad.rtol / ad.dx_norm;
             self.dat.h = ad.step_size_mul(f) * self.dat.h;
             if f <= T::one(){
@@ -216,9 +221,10 @@ impl<Sp, Fun, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, S, V, T>
     }
 }
 
-impl<Sp, Fun, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, S, V, T>
+impl<Sp, Fun, NormFn, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
-                Sp :NormedExponentialSplit<T, S, V>,
+                NormFn: Fn(&V) -> T,
+                Sp : ExponentialSplit<T, S, V>,
                 T: RealField + SupersetOf<f64>,
                 S: Ring + Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>{
