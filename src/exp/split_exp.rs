@@ -29,6 +29,18 @@ where   T: Ring + Copy + SupersetOf<f64>,
     _phantom: PhantomData<(T, S, V)>
 }
 
+impl<T, S, V, SpA, SpB> CommutativeExpSplit<T, S, V, SpA, SpB>
+where   T: Ring + Copy + SupersetOf<f64>,
+        S: Ring + Copy + From<T>,
+        V: Clone,
+        SpA: ExponentialSplit<T, S, V>,
+        SpB: ExponentialSplit<T, S, V>
+{
+    pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
+        Self{sp_a, sp_b, _phantom: PhantomData}
+    }
+}
+
 #[derive(Clone)]
 pub struct DirectSumL<A, B, S>
 where A: Clone, B: Clone, S: Clone
@@ -156,6 +168,17 @@ pub struct SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
     _phantom: PhantomData<(T, S, V)>
 }
 
+impl<T, S, V, SpA, SpB> SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
+where   T: Ring + Copy + SupersetOf<f64>,
+        S: Ring + Copy + From<T>,
+        V: Clone,
+        SpA: ExponentialSplit<T, S, V>,
+        SpB: ExponentialSplit<T, S, V>
+{
+    pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
+        Self{sp_a, sp_b, _phantom: PhantomData}
+    }
+}
 
 
 impl<T, V, SpA, SpB> ExponentialSplit<T, Complex<T>, V>
