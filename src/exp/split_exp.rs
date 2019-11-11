@@ -123,6 +123,13 @@ where T: Ring + Copy + SupersetOf<f64>,
         self.sp_b.map_exp(&u.1, &self.sp_a.map_exp(&u.0, x))
     }
 
+    fn multi_exp(&mut self, l: &Self::L, k_arr: &[S]) -> Vec<Self::U>{
+        let ua_vec = self.sp_a.multi_exp(&l.a, k_arr );
+        let ub_vec = self.sp_b.multi_exp(&l.b, k_arr);
+        let vec = ua_vec.into_iter().zip(ub_vec.into_iter()).collect_vec();
+        vec
+    }
+
 }
 
 impl<T, S, V, SpA, SpB> NormedExponentialSplit<T, S, V>
@@ -168,12 +175,27 @@ pub struct SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
     _phantom: PhantomData<(T, S, V)>
 }
 
+/// Implements an exponential consisting of split SpA and SpB
+/// over complex scalars
+#[derive(Clone)]
+pub struct TripleJumpExpSplit<T, S, V, SpA, SpB>
+    where   T: Ring + Copy + SupersetOf<f64>,
+            S: Ring + Copy + From<T>,
+            V: Clone,
+            SpA: ExponentialSplit<T, S, V>,
+            SpB: ExponentialSplit<T, S, V>
+{
+    sp_a: SpA,
+    sp_b: SpB,
+    _phantom: PhantomData<(T, S, V)>
+}
+
 impl<T, S, V, SpA, SpB> SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
-where   T: Ring + Copy + SupersetOf<f64>,
-        S: Ring + Copy + From<T>,
-        V: Clone,
-        SpA: ExponentialSplit<T, S, V>,
-        SpB: ExponentialSplit<T, S, V>
+    where   T: Ring + Copy + SupersetOf<f64>,
+            S: Ring + Copy + From<T>,
+            V: Clone,
+            SpA: ExponentialSplit<T, S, V>,
+            SpB: ExponentialSplit<T, S, V>
 {
     pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
         Self{sp_a, sp_b, _phantom: PhantomData}
@@ -191,7 +213,7 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
           SpB: ExponentialSplit<T, Complex<T>, V>
 {
     type L = DirectSumL<SpA::L, SpB::L, Complex<T>>;
-    type U = (SpA::U, [SpB::U; 3]);
+    type U = (SpA::U, Vec<SpB::U>);
 
     fn lin_zero(&self) -> Self::L{
         DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
@@ -202,17 +224,22 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
 
         let mut la1 = l.a.clone();
         la1.scale(Complex::from(T::from_subset(&0.25)));
-        let lb1 = l.b.clone();
-        let mut lb_arr = [lb1.clone(), lb1.clone(), lb1];
-        lb_arr[0].scale(b_arr[0].to_superset());
-        lb_arr[1].scale(b_arr[1].to_superset());
-        lb_arr[2].scale(b_arr[2].to_superset());
-
         let ua = self.sp_a.exp(&la1);
-        let ub_arr= [self.sp_b.exp(&lb_arr[0]),
-            self.sp_b.exp(&lb_arr[1]),
-            self.sp_b.exp(&lb_arr[2])
-        ];
+        let lb1 = l.b.clone();
+        let k_arr = b_arr.iter()
+            .map(|c| c.to_superset()).collect_vec();
+        let ub_arr = self.sp_b.multi_exp(&lb1, &k_arr);
+
+//        let mut lb_arr = [lb1.clone(), lb1.clone(), lb1];
+//        lb_arr[0].scale(b_arr[0].to_superset());
+//        lb_arr[1].scale(b_arr[1].to_superset());
+//        lb_arr[2].scale(b_arr[2].to_superset());
+//
+
+//        let ub_arr= [self.sp_b.exp(&lb_arr[0]),
+//            self.sp_b.exp(&lb_arr[1]),
+//            self.sp_b.exp(&lb_arr[2])
+//        ];
 
         (ua, ub_arr)
     }
@@ -244,6 +271,55 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
           SpB: ExponentialSplit<T, Complex<T>, V>{
     fn norm(&self, x: &V) -> T {
         self.sp_a.norm(x)
+    }
+}
+
+impl<T, S, V, SpA, SpB> TripleJumpExpSplit<T, S, V, SpA, SpB>
+    where   T: Ring + Copy + SupersetOf<f64>,
+            S: Ring + Copy + From<T>,
+            V: Clone,
+            SpA: ExponentialSplit<T, S, V>,
+            SpB: ExponentialSplit<T, S, V>
+{
+    pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
+        Self{sp_a, sp_b, _phantom: PhantomData}
+    }
+}
+
+impl<T, V, SpA, SpB> ExponentialSplit<T, Complex<T>, V>
+for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
+    where T: RealField,
+          V: Clone,
+          SpA: ExponentialSplit<T, Complex<T>, V>,
+          SpA::L : Clone + LinearCombination<Complex<T>>,
+          SpB::L : Clone + LinearCombination<Complex<T>>,
+          SpB: ExponentialSplit<T, Complex<T>, V>
+{
+    type L = DirectSumL<SpA::L, SpB::L, Complex<T>>;
+    type U = (Vec<SpA::U>, Vec<SpB::U>);
+
+    fn lin_zero(&self) -> Self::L {
+        DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
+    }
+
+    fn exp(&mut self, l: &Self::L) -> Self::U {
+        use crate::dat::split_complex::{TJ_O4_A, TJ_O4_B};
+        let ka_arr = TJ_O4_A.iter()
+            .map(|c| c.to_superset()).collect_vec();
+        let kb_arr = TJ_O4_A.iter()
+            .map(|c| c.to_superset()).collect_vec();
+
+        let ua_arr = self.sp_a.multi_exp(&l.a, &ka_arr);
+        let ub_arr = self.sp_b.multi_exp(&l.b, &kb_arr);
+
+        (ua_arr, ub_arr)
+    }
+
+    fn map_exp(&mut self, u: &Self::U, x: &V) -> V {
+        let y0 = self.sp_a.map_exp(&u.0[0],&self.sp_b.map_exp(&u.1[0], x));
+        let y1 = self.sp_a.map_exp(&u.0[1], &self.sp_b.map_exp(&u.1[1], &y0));
+        let y2 = self.sp_a.map_exp(&u.0[0], &self.sp_b.map_exp(&u.1[1], &y1));
+        self.sp_b.map_exp(&u.1[0], &y2)
     }
 }
 

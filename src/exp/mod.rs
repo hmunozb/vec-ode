@@ -21,6 +21,13 @@ where T: Ring + Copy + SupersetOf<f64>,
     fn exp(&mut self, l: &Self::L) -> Self::U;
     /// Applies the exponential on a vector x
     fn map_exp(&mut self, u: &Self::U, x: & V) -> V;
+
+    /// Evaluate multiple exponentials exp(k l) of rescalings of l
+    fn multi_exp(&mut self, l: &Self::L, k_arr: &[S]) -> Vec<Self::U>{
+        let mut l2 = self.lin_zero();
+        k_arr.iter().map(|&k| {l.scalar_multiply_to(k, &mut l2); self.exp(&mut l2)})
+             .collect_vec()
+    }
 }
 
 pub trait NormedExponentialSplit<T, S, V> : ExponentialSplit<T, S, V>
@@ -46,3 +53,4 @@ where T: Ring + Copy + SupersetOf<f64>,
 
 pub use split_exp::*;
 pub use magnus::MidpointExpLinearSolver;
+use itertools::Itertools;
