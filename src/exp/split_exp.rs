@@ -190,6 +190,21 @@ pub struct TripleJumpExpSplit<T, S, V, SpA, SpB>
     _phantom: PhantomData<(T, S, V)>
 }
 
+/// Implements an exponential consisting of split SpA and SpB
+/// over complex scalars
+#[derive(Clone)]
+pub struct ExpSplit<T, S, V, SpA, SpB>
+    where   T: Ring + Copy + SupersetOf<f64>,
+            S: Ring + Copy + From<T>,
+            V: Clone,
+            SpA: ExponentialSplit<T, S, V>,
+            SpB: ExponentialSplit<T, S, V>
+{
+    sp_a: SpA,
+    sp_b: SpB,
+    _phantom: PhantomData<(T, S, V)>
+}
+
 impl<T, S, V, SpA, SpB> SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
     where   T: Ring + Copy + SupersetOf<f64>,
             S: Ring + Copy + From<T>,
@@ -306,7 +321,7 @@ for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
         use crate::dat::split_complex::{TJ_O4_A, TJ_O4_B};
         let ka_arr = TJ_O4_A.iter()
             .map(|c| c.to_superset()).collect_vec();
-        let kb_arr = TJ_O4_A.iter()
+        let kb_arr = TJ_O4_B.iter()
             .map(|c| c.to_superset()).collect_vec();
 
         let ua_arr = self.sp_a.multi_exp(&l.a, &ka_arr);

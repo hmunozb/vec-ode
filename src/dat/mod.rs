@@ -27,6 +27,16 @@ pub mod rk{
     ];
 }
 
+pub mod split{
+    pub static RKN_O4_A : [f64; 3] = [
+        0.209515106613362, -0.143851773179818, 0.434336666566456
+    ];
+
+    pub static RKN_O4_B : [f64; 4] = [
+        0.0792036964311957, 0.353172906049774, -0.0420650803577195, 0.21937695575349958
+    ];
+}
+
 pub mod split_complex {
     use num_complex::Complex64 as c64;
 
