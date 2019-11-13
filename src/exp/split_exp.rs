@@ -245,17 +245,6 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
             .map(|c| c.to_superset()).collect_vec();
         let ub_arr = self.sp_b.multi_exp(&lb1, &k_arr);
 
-//        let mut lb_arr = [lb1.clone(), lb1.clone(), lb1];
-//        lb_arr[0].scale(b_arr[0].to_superset());
-//        lb_arr[1].scale(b_arr[1].to_superset());
-//        lb_arr[2].scale(b_arr[2].to_superset());
-//
-
-//        let ub_arr= [self.sp_b.exp(&lb_arr[0]),
-//            self.sp_b.exp(&lb_arr[1]),
-//            self.sp_b.exp(&lb_arr[2])
-//        ];
-
         (ua, ub_arr)
     }
 
@@ -273,7 +262,6 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
         drop(y3);
         self.sp_b.map_exp(&u.1[0], &y4)
     }
-
 }
 
 impl<T, V, SpA, SpB> NormedExponentialSplit<T, Complex<T>, V>
@@ -335,6 +323,76 @@ for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
         let y1 = self.sp_a.map_exp(&u.0[1], &self.sp_b.map_exp(&u.1[1], &y0));
         let y2 = self.sp_a.map_exp(&u.0[0], &self.sp_b.map_exp(&u.1[1], &y1));
         self.sp_b.map_exp(&u.1[0], &y2)
+    }
+}
+
+
+pub struct RKNR4ExpSplit<T, S, V, SpA, SpB>
+where  T: RealField,
+       S: Ring + Copy + From<T>,
+       V: Clone,
+       SpA: ExponentialSplit<T, S, V>,
+       SpB: ExponentialSplit<T, S, V>
+{
+    sp_a: SpA,
+    sp_b: SpB,
+    ka_arr: Vec<S>,
+    kb_arr: Vec<S>,
+    _phantom: PhantomData<(T, S, V)>
+}
+
+impl<T, S, V, SpA, SpB>
+RKNR4ExpSplit<T, S, V, SpA, SpB>
+where  T: RealField,
+       S: Ring + Copy + From<T>,
+       V: Clone,
+       SpA: ExponentialSplit<T, S, V>,
+       SpB: ExponentialSplit<T, S, V>
+{
+    pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
+        use crate::dat::split::{RKN_O4_A, RKN_O4_B};
+        let ka_arr = RKN_O4_A.iter()
+            .map(|c| S::from(T::from_subset(c))).collect_vec();
+        let kb_arr = RKN_O4_B.iter()
+            .map(|c| S::from(T::from_subset(c))).collect_vec();
+
+        Self{sp_a, sp_b, ka_arr, kb_arr, _phantom: PhantomData}
+    }
+}
+
+impl<T, S, V, SpA, SpB> ExponentialSplit<T, S, V>
+for RKNR4ExpSplit<T, S, V, SpA, SpB>
+    where T: RealField,
+          S: Ring + Copy + From<T>,
+          V: Clone,
+          SpA: ExponentialSplit<T, S, V>,
+          SpA::L : Clone + LinearCombination<S>,
+          SpB::L : Clone + LinearCombination<S>,
+          SpB: ExponentialSplit<T, S, V>
+{
+    type L = DirectSumL<SpA::L, SpB::L, S>;
+    type U = (Vec<SpA::U>, Vec<SpB::U>);
+
+    fn lin_zero(&self) -> Self::L {
+        DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
+    }
+
+    fn exp(&mut self, l: &Self::L) -> Self::U {
+        let ua_arr = self.sp_a.multi_exp(&l.a, &self.ka_arr);
+        let ub_arr = self.sp_b.multi_exp(&l.b, &self.kb_arr);
+
+        (ua_arr, ub_arr)
+    }
+
+    fn map_exp(&mut self, u: &Self::U, x: &V) -> V {
+        let y0 = self.sp_a.map_exp(&u.0[0],&self.sp_b.map_exp(&u.1[0], x));
+        let y1 = self.sp_a.map_exp(&u.0[1], &self.sp_b.map_exp(&u.1[1], &y0)); drop(y0);
+        let y2 = self.sp_a.map_exp(&u.0[2], &self.sp_b.map_exp(&u.1[2], &y1)); drop(y1);
+        let y3 = self.sp_a.map_exp(&u.0[2], &self.sp_b.map_exp(&u.1[3], &y2)); drop(y2);
+        let y4 = self.sp_a.map_exp(&u.0[1], &self.sp_b.map_exp(&u.1[2], &y3)); drop(y3);
+        let y5 = self.sp_a.map_exp(&u.0[0], &self.sp_b.map_exp(&u.1[1], &y4)); drop(y4);
+
+        self.sp_b.map_exp(&u.1[0], &y5)
     }
 }
 

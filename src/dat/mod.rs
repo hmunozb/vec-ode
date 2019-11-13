@@ -28,6 +28,9 @@ pub mod rk{
 }
 
 pub mod split{
+    //From Blanes & Moan (2002)
+    //Note that the source uses ABA convention, while
+    //the splits here are BAB convention
     pub static RKN_O4_A : [f64; 3] = [
         0.209515106613362, -0.143851773179818, 0.434336666566456
     ];
