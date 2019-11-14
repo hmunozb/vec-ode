@@ -149,7 +149,7 @@ where
         dat.next_dt = h;
         dat.h = h;
         let adaptive_dat = ODEAdaptiveData::new_with_defaults(
-            x0, T::from_subset(&5.0)).with_alpha(0.8);
+            x0, T::from_subset(&5.0)).with_alpha(T::from_subset(&0.8));
 
         Self{f, norm, sp, dat, adaptive_dat, K, KA, c, alpha, alph_err}
     }
