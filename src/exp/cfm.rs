@@ -211,7 +211,9 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V,
         if let ODEStep::Step(_) = step.clone(){
             ad.dx_norm = (self.norm)(&ad.dx);
             let f = ad.rtol / ad.dx_norm;
-            self.dat.h = T::min(T::max(ad.step_size_mul(f) * self.dat.h, ad.min_dt), ad.max_dt);
+            let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ), T::from_subset(&2.0));
+            self.dat.h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
+
             if f <= T::one(){
                 return ODEStep::Reject;
             }
