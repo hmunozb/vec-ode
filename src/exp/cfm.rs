@@ -50,7 +50,7 @@ pub fn cfm_general<'a, Sp, T, S, V, Fun>(
 
 ) -> Result<(), ODEError>
     where
-        Fun: FnMut(&[T]) -> Vec<Sp::L>,
+        Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
         Sp :ExponentialSplit<T, S, V>,
         Sp::L : LinearCombination<S>,
         T: Ring + Copy + SupersetOf<f64>,
@@ -68,7 +68,7 @@ pub fn cfm_general<'a, Sp, T, S, V, Fun>(
 
     let t_arr = c.iter().map(|ci| t + (*ci)*dt).collect_vec();
 
-    let va = (*f)(&t_arr);
+    let va = (*f)(&t_arr, (t, t+dt));
 
     cfm_exp(x0, &mut KV[0], dt, &va, &mut KA[0],
             alpha.slice(s![0,..]), sp );
@@ -100,7 +100,7 @@ pub fn cfm_general<'a, Sp, T, S, V, Fun>(
 
 pub struct ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     where
-        Fun: FnMut(&[T]) -> Vec<Sp::L>,
+        Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
         NormFn: FnMut(&V) -> T,
         Sp : ExponentialSplit<T, S, V>,
         T: RealField,
@@ -121,7 +121,7 @@ pub struct ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
 
 impl<Sp, Fun, NormFn, S, V, T> ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
 where
-    Fun: FnMut(&[T]) -> Vec<Sp::L>,
+    Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
     NormFn: FnMut(&V) -> T,
     Sp : ExponentialSplit<T, S, V>,
     T: RealField + SupersetOf<f64>,
@@ -157,7 +157,7 @@ where
 
 
 impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
-    where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
+    where       Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
                 NormFn: FnMut(&V) -> T,
                 Sp : ExponentialSplit<T, S, V>,
                 T: RealField + SupersetOf<f64>,
@@ -195,7 +195,7 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S
 }
 
 impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
-    where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
+    where       Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
                 NormFn: FnMut(&V) -> T,
                 Sp : ExponentialSplit<T, S, V>,
                 T: RealField + SupersetOf<f64>,
@@ -224,7 +224,7 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V,
 }
 
 impl<Sp, Fun, NormFn, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
-    where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
+    where       Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
                 NormFn: FnMut(&V) -> T,
                 Sp : ExponentialSplit<T, S, V>,
                 T: RealField + SupersetOf<f64>,
