@@ -12,13 +12,32 @@ use crate::dat::rk::{rk45_ac, rk45_b, rk45_berr};
 use ndarray::iter::Lanes;
 use super::num_complex::Complex;
 
-pub trait LinearCombination<S>: Sized{
+pub trait LinearCombination<S>: Sized
+where S:Clone
+{
     fn scale(&mut self, k: S);
     fn scalar_multiply_to(&self, k: S, target: &mut Self);
     fn add_scalar_mul(&mut self, k: S, other: &Self);
     fn add_assign_ref(&mut self, other: &Self);
     /// Subtracts the vector y from self
     fn delta(&mut self, y: &Self);
+
+    fn linear_combination(&mut self, v_arr: &[Self], k_arr: &[S]){
+        if v_arr.is_empty() || k_arr.is_empty(){
+            panic!("linear_combination: slices cannot be empty")
+        }
+        if v_arr.len() != k_arr.len(){
+            panic!("linear_combination: slices must be the same length")
+        }
+
+        let (v0, v_arr) = v_arr.split_at(1);
+        let (k0, k_arr) = k_arr.split_at(1);
+
+        Self::scalar_multiply_to(&v0[0], k0[0].clone(), self);
+        for (v, k) in v_arr.iter().zip(k_arr.iter()){
+            self.add_scalar_mul(k.clone(), v);
+        }
+    }
 }
 
 
