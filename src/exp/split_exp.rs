@@ -158,6 +158,73 @@ where T: Ring + Copy + SupersetOf<f64>,
     }
 }
 
+#[derive(Clone)]
+pub struct StrangSplit<T, S, V, SpA, SpB>
+where   T: Ring + Copy + SupersetOf<f64>,
+        S: Ring + Copy + From<T>,
+        V: Clone,
+        SpA: ExponentialSplit<T, S, V>,
+        SpB: ExponentialSplit<T, S, V>{
+    sp_a: SpA,
+    sp_b: SpB,
+    _phantom: PhantomData<(T, S, V)>
+}
+
+impl<T, S, V, SpA, SpB> StrangSplit<T, S, V, SpA, SpB>
+    where   T: Ring + Copy + SupersetOf<f64>,
+            S: Ring + Copy + From<T>,
+            V: Clone,
+            SpA: ExponentialSplit<T, S, V>,
+            SpB: ExponentialSplit<T, S, V>
+{
+    pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
+        Self{sp_a, sp_b, _phantom: PhantomData}
+    }
+}
+
+impl<T, S, V, SpA, SpB> ExponentialSplit<T, S, V>
+for StrangSplit<T, S, V, SpA, SpB>
+    where T: Ring + Copy + SupersetOf<f64>,
+          S: Ring + Copy + From<T>,
+          V: Clone,
+          SpA: ExponentialSplit<T, S, V>,
+          SpB: ExponentialSplit<T, S, V>,
+          SpA::L : Clone + LinearCombination<S>,
+          SpB::L : Clone + LinearCombination<S>,
+{
+    type L = DirectSumL<SpA::L, SpB::L, S>;
+    type U = (SpA::U, SpB::U);
+
+    fn lin_zero(&self) -> Self::L{
+        DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
+    }
+
+    fn exp(&mut self, l: &Self::L) -> Self::U{
+        let la = &l.a;
+        let mut lb = l.b.clone();
+        lb.scale(S::from(T::from_subset(&0.5)));
+
+        let ua = self.sp_a.exp(&la);
+        let ub = self.sp_b.exp(&lb);
+        (ua, ub)
+    }
+
+    fn map_exp(&mut self, u: &Self::U, x: &V) -> V{
+        let y = self.sp_a.map_exp(&u.0, &self.sp_b.map_exp(&u.1, x));
+        self.sp_b.map_exp(&u.1, &y)
+    }
+
+    fn multi_exp(&mut self, l: &Self::L, k_arr: &[S]) -> Vec<Self::U>{
+        let mut lb = l.b.clone();
+        lb.scale(S::from(T::from_subset(&0.5)));
+
+        let ua_vec = self.sp_a.multi_exp(&l.a, k_arr );
+        let ub_vec = self.sp_b.multi_exp(&lb, k_arr);
+        let vec = ua_vec.into_iter().zip(ub_vec.into_iter()).collect_vec();
+        vec
+    }
+
+}
 
 
 /// Implements an exponential consisting of split SpA and SpB
