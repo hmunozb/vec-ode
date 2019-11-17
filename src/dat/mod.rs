@@ -59,7 +59,7 @@ pub mod split_complex {
     pub static SEMI_COMPLEX_O4_B: [c64; 3] =
         [   c64{re: 0.1, im: -1.0/30.0},
             c64{re: 4.0/15.0, im: 2.0/15.0},
-            c64{re: 4.0/15.0, im: -1.0/15.0}];
+            c64{re: 4.0/15.0, im: -1.0/5.0}];
 
 }
 
