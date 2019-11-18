@@ -149,7 +149,7 @@ where
         dat.next_dt = h;
         dat.h = h;
         let adaptive_dat = ODEAdaptiveData::new_with_defaults(
-            x0, T::from_subset(&5.0)).with_alpha(T::from_subset(&0.8));
+            x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
 
         Self{f, norm, sp, dat, adaptive_dat, K, KA, c, alpha, alph_err}
     }
@@ -214,7 +214,7 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V,
             let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ), T::from_subset(&2.0));
             self.dat.h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
 
-            if f <= T::from_subset(&1.2){
+            if f <= T::from_subset(&1.0){
                 return ODEStep::Reject;
             }
         }
