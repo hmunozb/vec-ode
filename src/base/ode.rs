@@ -155,7 +155,6 @@ where V: Clone, T: Clone + RealField {
         swap(&mut self.x, &mut self.next_x);
         //self.x.clone_from(&self.next_x);
         self.t += self.next_dt.clone();
-        self.prev_h = self.h;
     }
 
     /// Updates the checkpoint index.
