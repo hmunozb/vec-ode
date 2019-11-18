@@ -145,9 +145,7 @@ where
                  .map(|x|S::from(T::from_subset(x)))
                  .collect_vec()
             ).unwrap();
-        let mut dat = ODEData::new(t0, tf, x0.clone());
-        dat.next_dt = h;
-        dat.h = h;
+        let mut dat = ODEData::new(t0, tf, x0.clone(), h);
         let adaptive_dat = ODEAdaptiveData::new_with_defaults(
             x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
 
@@ -177,9 +175,9 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S
         self.dat
     }
 
-    fn step_size(&self) -> ODEStep<T>{
-        self.dat.step_size(self.dat.h)
-    }
+//    fn step_size(&self) -> ODEStep<T>{
+//        self.dat.step_size_of(self.dat.h)
+//    }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError> {
         let dat = &mut self.dat;
@@ -212,7 +210,9 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V,
             ad.dx_norm = (self.norm)(&ad.dx);
             let f = ad.rtol / ad.dx_norm;
             let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ), T::from_subset(&2.0));
-            self.dat.h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
+            let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
+
+            self.dat.update_step_size(new_h);
 
             if f <= T::from_subset(&1.0){
                 return ODEStep::Reject;

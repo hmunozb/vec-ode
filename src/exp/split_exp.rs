@@ -571,7 +571,6 @@ where
     sp_a: SpA,
     sp_b: SpB,
     dat: ODEData<T, V>,
-    h: T,
     K: Vec<V>,
     _phantom: PhantomData<S>
 }
@@ -588,9 +587,9 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T, sp_a: SpA, sp_b: SpB) -> Self{
         let mut K: Vec<V> = Vec::new();
         K.resize(3, x0.clone());
-        let dat = ODEData::new(t0, tf, x0);
+        let dat = ODEData::new(t0, tf, x0, h);
 
-        Self{f, sp_a, sp_b, dat, h, K, _phantom: PhantomData}
+        Self{f, sp_a, sp_b, dat, K, _phantom: PhantomData}
     }
 }
 
@@ -617,10 +616,10 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
         self.dat
     }
 
-    fn step_size(&self) -> ODEStep<T>{
-        self.dat.step_size(self.h.clone())
+//    fn step_size(&self) -> ODEStep<T>{
+//        self.dat.step_size_of(self.h.clone())
+//    }
 
-    }
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
         let dat = &mut self.dat;
         dat.next_dt = dt;

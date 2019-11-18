@@ -88,7 +88,6 @@ where   Fun: FnMut(T) -> Sp::L,
     f: Fun,
     sp: Sp,
     dat: ODEData<T, V>,
-    h: T,
     _phantom: PhantomData<S>
 }
 
@@ -104,9 +103,9 @@ impl<Sp, Fun, S, V, T> MidpointExpLinearSolver<Sp, Fun, S, V, T>
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T, sp: Sp) -> Self{
         let mut K: Vec<V> = Vec::new();
         K.resize(3, x0.clone());
-        let dat = ODEData::new(t0, tf, x0);
+        let dat = ODEData::new(t0, tf, x0, h);
 
-        Self{f, sp, dat, h, _phantom: PhantomData}
+        Self{f, sp, dat, _phantom: PhantomData}
     }
 }
 
@@ -131,9 +130,9 @@ where       Fun: FnMut(T) -> Sp::L,
         self.dat
     }
 
-    fn step_size(&self) -> ODEStep<T>{
-        self.dat.step_size(self.h.clone())
-    }
+//    fn step_size(&self) -> ODEStep<T>{
+//        self.dat.step_size_of(self.h.clone())
+//    }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError> {
         let dat = &mut self.dat;
@@ -168,7 +167,6 @@ pub struct MagnusExpLinearSolver<Sp, Fun, S, V, T>
     dat: ODEData<T, V>,
     x_err: V,
     dt_range: (T, T),
-    h: T,
     atol:T,
     rtol:T,
     err: T,
@@ -186,30 +184,32 @@ impl<Sp, Fun, S, V, T> MagnusExpLinearSolver<Sp, Fun, S, V, T>
     pub fn new(f: Fun, t0: T, tf: T, x0: V, sp: Sp) -> Self{
         let x_err = x0.clone();
         let h = T::from_subset(&1.0e-3);
-        let dat = ODEData::new(t0, tf, x0);
+        let dat = ODEData::new(t0, tf, x0, h);
         let dt_range = (T::from_subset(&1.0e-6), T::from_subset(&1.0));
         let atol = T::from_subset(&1.0e-6);
         let rtol = T::from_subset(&1.0e-6);
         f64::epsilon();
-        Self{f, sp, dat, x_err, dt_range, h, atol, rtol, err: T::zero(), _phantom: PhantomData}
+        Self{f, sp, dat, x_err, dt_range, atol, rtol, err: T::zero(), _phantom: PhantomData}
     }
 
-    pub fn with_step_range(self, dt_min: T, dt_max: T) -> Self{
+    pub fn with_step_range(mut self, dt_min: T, dt_max: T) -> Self{
         if dt_min <= T::zero() || dt_max <= T::zero() || dt_max <= dt_min {
             panic!("Invalid step range: ({}, {})", dt_min, dt_max);
         }
 
         let dt_range = (dt_min, dt_max);
         let h = T::sqrt(dt_min*dt_max);
-        Self{dt_range, h, ..self}
+        self.dat.reset_step_size(h);
+        self
     }
 
-    pub fn with_init_step(self, h: T) -> Self{
+    pub fn with_init_step(mut self, h: T) -> Self{
         if h < self.dt_range.0 || h > self.dt_range.1{
             panic!("Step {} is not inside the range ({}, {})",
                    h, self.dt_range.0, self.dt_range.0);
         }
-        Self{h, ..self}
+        self.dat.reset_step_size(h);
+        self
     }
 
     pub fn with_tolerance(self, atol: T, rtol: T) -> Self {
@@ -242,9 +242,9 @@ impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
         self.dat
     }
 
-    fn step_size(&self) -> ODEStep<T>{
-        self.dat.step_size(self.h.clone())
-    }
+//    fn step_size(&self) -> ODEStep<T>{
+//        self.dat.step_size_of(self.h.clone())
+//    }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError> {
         let dat = &mut self.dat;
@@ -277,7 +277,9 @@ impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
         if let ODEStep::Step(_) = step.clone(){
             self.err = self.sp.norm(&self.x_err);
             let f = self.rtol / self.err;
-            self.h = T::from_subset(&0.9) * T::powf(f, T::from_subset(&(1.0/3.0))) * self.h;
+            let new_h = T::from_subset(&0.9) * T::powf(f, T::from_subset(&(1.0/3.0))) * self.dat.h;
+            self.dat.update_step_size(new_h);
+
             if f <= T::one(){
                 return ODEStep::Reject;
             }

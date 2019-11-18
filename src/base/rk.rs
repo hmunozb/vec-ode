@@ -189,7 +189,7 @@ pub struct RK45Solver<V,Fun,S,T=f64>
     f: Fun,
     dat: ODEData<T, V>,
     x_err: V,
-    h: T,
+    //h: T,
     tabl: ButcherTableu<T>,
     K: Vec<V>,
     _phantom: PhantomData<S>
@@ -210,8 +210,8 @@ impl<'a,V,S,Fun> RK45Solver<V,Fun,S,f64>
         let tabl = ButcherTableu::from_slices(&rk45_ac, &rk45_b, Some(&rk45_berr), 6);
         let mut K: Vec<V> = Vec::new();
         K.resize(7, x0.clone());
-        let dat = ODEData::new(t0, tf, x0);
-        RK45Solver{f, dat, x_err, h, tabl, K, _phantom: PhantomData}
+        let dat = ODEData::new(t0, tf, x0, h);
+        RK45Solver{f, dat, x_err,  tabl, K, _phantom: PhantomData}
     }
 }
 
@@ -234,16 +234,16 @@ impl<V,Fun,S,T> ODESolverBase for RK45Solver<V,Fun,S,T>
         self.dat
     }
 
-    fn step_size(&self) -> ODEStep<T>{
-        self.dat.step_size(self.h.clone())
-    }
+//    fn step_size(&self) -> ODEStep<T>{
+//        self.dat.step_size_of(self.dat.h)
+//    }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
         let dat = &mut self.dat;
 //        dat.next_dt = dt;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, Some(&mut self.x_err),
-                          dat.next_dt.clone(), &self.tabl, &mut self.K,
+                          dt, &self.tabl, &mut self.K,
                           PhantomData::<S>);
         res
     }
@@ -290,7 +290,7 @@ impl<V,Fun,S> RK45AdaptiveSolver<V,Fun,S,f64>
         let tabl = ButcherTableu::from_slices(&rk45_ac, &rk45_b, Some(&rk45_berr), 6);
         let mut K: Vec<V> = Vec::new();
         K.resize(7, x0.clone());
-        let dat = ODEData::new(t0, tf, x0);
+        let dat = ODEData::new(t0, tf, x0, h);
         RK45AdaptiveSolver{f, dat, x_err, h, tabl, K, _phantom: PhantomData}
     }
 

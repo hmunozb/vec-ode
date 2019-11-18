@@ -1,6 +1,7 @@
 use alga::general::{RealField};
 use approx::RelativeEq;
 use num_traits::Zero;
+use std::mem::swap;
 
 #[derive(Clone)]
 pub struct ODEError{
@@ -61,6 +62,7 @@ where V: Clone, T: Clone
     pub next_x: V,
     pub next_dt: T,
     pub h: T,
+    pub prev_h: T
 }
 
 /// Group together data needed by adaptive solvers
@@ -106,15 +108,15 @@ where V: Clone, T: RealField{
 
 impl<T, V> ODEData<T, V>
 where V: Clone, T: Clone + RealField {
-    pub fn new(t0: T, tf: T, x0: V) -> Self{
+    pub fn new(t0: T, tf: T, x0: V, h: T) -> Self{
         let x = x0.clone();
         let t = t0.clone();
         let mut t_list = vec![t0, tf];
         let tgt_t = 0;
         let next_x = x0.clone();
-        let next_dt = t0.clone();
+        let next_dt = h;
 
-        Self{t0, tf, x0, t, x, t_list, tgt_t, next_x, next_dt, h: t0}
+        Self{t0, tf, x0, t, x, t_list, tgt_t, next_x, next_dt, h, prev_h: h}
     }
 
     pub fn current(&self) -> (T, &V){
@@ -130,7 +132,7 @@ where V: Clone, T: Clone + RealField {
     /// it is simply returned as the next step size. Otherwise, the largest possible step
     /// is returned. The Checkpt instruction is then emitted until the checkpoint is updated
     /// The End instruction is perpetually emitted if the integration reaches the final time.
-    pub fn step_size(&self, dt_max: T) -> ODEStep<T>{
+    pub fn step_size_of(&self, dt_max: T) -> ODEStep<T>{
         let checkpt_t = match self.t_list.get(self.tgt_t){
             None => return ODEStep::End,
             Some(t) => t.clone()
@@ -143,15 +145,34 @@ where V: Clone, T: Clone + RealField {
         }
     }
 
+    pub fn step_size(&self) -> ODEStep<T>{
+        let step = self.step_size_of(self.h);
+        step
+    }
+
     /// Updates the current (t, x) to (next_x, t + next_dt)
-    pub fn step_update(&mut self) {
-        self.x.clone_from(&self.next_x);
+    pub fn advance(&mut self) {
+        swap(&mut self.x, &mut self.next_x);
+        //self.x.clone_from(&self.next_x);
         self.t += self.next_dt.clone();
+        self.prev_h = self.h;
     }
 
     /// Updates the checkpoint index.
+    /// If the solver is adaptive, also backtrack to the last accepted step size
     pub fn checkpoint_update(&mut self, end: bool){
         self.tgt_t += 1;
+        self.h = self.prev_h;
+    }
+
+    pub fn reset_step_size(&mut self, h: T){
+        self.h = h;
+        self.prev_h = h;
+    }
+
+    pub fn update_step_size(&mut self, h: T){
+        self.prev_h = self.h;
+        self.h = h;
     }
 }
 
@@ -171,12 +192,14 @@ pub trait ODESolverBase: Sized{
     }
     ///The next step size to attempt. Return None if integration has reached the end of the interval
     /// Return Checkpt if a checkpoint time is reached
-    fn step_size(&self) -> ODEStep<Self::TField>;
+    fn step_size(&self) -> ODEStep<Self::TField>{
+        self.ode_data().step_size()
+    }
     /// Attempt a step with the given step size
     fn try_step(&mut self, dt: Self::TField) -> Result<(), ODEError>;
     /// Accept the previously attempted step
     fn accept_step(&mut self){
-        self.ode_data_mut().step_update();
+        self.ode_data_mut().advance();
     }
 
     /// Any handling to be done when a checkpoint time is reached
@@ -248,7 +271,7 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolverBase<TField=T>{
         }
         {
             let dat = self.ode_data_mut();
-            dat.h = h;
+            dat.reset_step_size(h)
         }
 
         self
@@ -261,7 +284,7 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolverBase<TField=T>{
                    h, ad.min_dt, ad.max_dt);
         }
         let mut dat = self.ode_data_mut();
-        dat.h = h;
+        dat.reset_step_size(h);
         self
     }
 
