@@ -34,7 +34,7 @@ pub fn cfm_exp<'a, Sp, T, S, V>(
         k.add_scalar_mul(ai.clone(), mi);
     }
     k.scale(S::from(dt));
-    let u = sp.exp(&*k);
+    let u = sp.exp(k.clone());
     *x1 = sp.map_exp(&u, x0);
 }
 

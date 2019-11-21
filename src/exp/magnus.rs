@@ -17,7 +17,7 @@ where   Fun: FnMut(T) -> Sp::L,
     let t_mid = t + dt * T::from_subset(&0.5);
     let mut l = (*f)(t_mid);
     l.scale(S::from(dt));
-    let u = sp.exp(&l);
+    let u = sp.exp(l);
     *xf = sp.map_exp(&u, x0);
 
     Ok(())
@@ -58,7 +58,7 @@ fn magnus_42<Fun, T, S, V, Sp>(
     w1.add_assign_ref(&l_vec[1]);
     w1.scale(S::from(b1));
 
-    let u1 = sp.exp(&w1);
+    let u1 = sp.exp(w1.clone());
     // 4th order ME
     let mut w = w1;
     w += &w2;
@@ -67,7 +67,7 @@ fn magnus_42<Fun, T, S, V, Sp>(
     //let mut err_w1: Sp::L = l_vec[1].clone();
     //err_w1 *= S::from(b1);
 
-    let u = sp.exp(&w);
+    let u = sp.exp(w);
     //let u_err = sp.exp(&err_w1);
 
     *xf = sp.map_exp(&u, x0);

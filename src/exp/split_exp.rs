@@ -113,9 +113,9 @@ where T: Ring + Copy + SupersetOf<f64>,
         DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
     }
 
-    fn exp(&mut self, l: &Self::L) -> Self::U{
-        let ua = self.sp_a.exp(&l.a);
-        let ub = self.sp_b.exp(&l.b);
+    fn exp(&mut self, l: Self::L) -> Self::U{
+        let ua = self.sp_a.exp(l.a);
+        let ub = self.sp_b.exp(l.b);
         (ua, ub)
     }
 
@@ -123,9 +123,10 @@ where T: Ring + Copy + SupersetOf<f64>,
         self.sp_b.map_exp(&u.1, &self.sp_a.map_exp(&u.0, x))
     }
 
-    fn multi_exp(&mut self, l: &Self::L, k_arr: &[S]) -> Vec<Self::U>{
-        let ua_vec = self.sp_a.multi_exp(&l.a, k_arr );
-        let ub_vec = self.sp_b.multi_exp(&l.b, k_arr);
+    fn multi_exp(&mut self, l: Self::L, k_arr: &[S]) -> Vec<Self::U>{
+
+        let ua_vec = self.sp_a.multi_exp(l.a, k_arr);
+        let ub_vec = self.sp_b.multi_exp(l.b, k_arr);
         let vec = ua_vec.into_iter().zip(ub_vec.into_iter()).collect_vec();
         vec
     }
@@ -199,13 +200,13 @@ for StrangSplit<T, S, V, SpA, SpB>
         DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
     }
 
-    fn exp(&mut self, l: &Self::L) -> Self::U{
-        let la = &l.a;
-        let mut lb = l.b.clone();
+    fn exp(&mut self, l: Self::L) -> Self::U{
+        let la = l.a;
+        let mut lb = l.b;
         lb.scale(S::from(T::from_subset(&0.5)));
 
-        let ua = self.sp_a.exp(&la);
-        let ub = self.sp_b.exp(&lb);
+        let ua = self.sp_a.exp(la);
+        let ub = self.sp_b.exp(lb);
         (ua, ub)
     }
 
@@ -214,12 +215,13 @@ for StrangSplit<T, S, V, SpA, SpB>
         self.sp_b.map_exp(&u.1, &y)
     }
 
-    fn multi_exp(&mut self, l: &Self::L, k_arr: &[S]) -> Vec<Self::U>{
-        let mut lb = l.b.clone();
+    fn multi_exp(&mut self, l: Self::L, k_arr: &[S]) -> Vec<Self::U>{
+        let la = l.a;
+        let mut lb = l.b;
         lb.scale(S::from(T::from_subset(&0.5)));
 
-        let ua_vec = self.sp_a.multi_exp(&l.a, k_arr );
-        let ub_vec = self.sp_b.multi_exp(&lb, k_arr);
+        let ua_vec = self.sp_a.multi_exp(la, k_arr );
+        let ub_vec = self.sp_b.multi_exp(lb, k_arr);
         let vec = ua_vec.into_iter().zip(ub_vec.into_iter()).collect_vec();
         vec
     }
@@ -301,16 +303,16 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
         DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
     }
 
-    fn exp(&mut self, l: &Self::L) -> Self::U{
+    fn exp(&mut self, l: Self::L) -> Self::U{
         use crate::dat::split_complex::SEMI_COMPLEX_O4_B as b_arr;
 
-        let mut la1 = l.a.clone();
+        let mut la1 = l.a;
         la1.scale(Complex::from(T::from_subset(&0.25)));
-        let ua = self.sp_a.exp(&la1);
-        let lb1 = l.b.clone();
+        let ua = self.sp_a.exp(la1);
+        let lb1 = l.b;
         let k_arr = b_arr.iter()
             .map(|c| c.to_superset()).collect_vec();
-        let ub_arr = self.sp_b.multi_exp(&lb1, &k_arr);
+        let ub_arr = self.sp_b.multi_exp(lb1, &k_arr);
 
         (ua, ub_arr)
     }
@@ -372,15 +374,15 @@ for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
         DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
     }
 
-    fn exp(&mut self, l: &Self::L) -> Self::U {
+    fn exp(&mut self, l: Self::L) -> Self::U {
         use crate::dat::split_complex::{TJ_O4_A, TJ_O4_B};
         let ka_arr = TJ_O4_A.iter()
             .map(|c| c.to_superset()).collect_vec();
         let kb_arr = TJ_O4_B.iter()
             .map(|c| c.to_superset()).collect_vec();
 
-        let ua_arr = self.sp_a.multi_exp(&l.a, &ka_arr);
-        let ub_arr = self.sp_b.multi_exp(&l.b, &kb_arr);
+        let ua_arr = self.sp_a.multi_exp(l.a, &ka_arr);
+        let ub_arr = self.sp_b.multi_exp(l.b, &kb_arr);
 
         (ua_arr, ub_arr)
     }
@@ -444,9 +446,9 @@ for RKNR4ExpSplit<T, S, V, SpA, SpB>
         DirectSumL::new(self.sp_a.lin_zero(), self.sp_b.lin_zero())
     }
 
-    fn exp(&mut self, l: &Self::L) -> Self::U {
-        let ua_arr = self.sp_a.multi_exp(&l.a, &self.ka_arr);
-        let ub_arr = self.sp_b.multi_exp(&l.b, &self.kb_arr);
+    fn exp(&mut self, l: Self::L) -> Self::U {
+        let ua_arr = self.sp_a.multi_exp(l.a, &self.ka_arr);
+        let ub_arr = self.sp_b.multi_exp(l.b, &self.kb_arr);
 
         (ua_arr, ub_arr)
     }
@@ -491,11 +493,12 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
     KB.push(lb);
     KA[0].scale(dt0); KA[1].scale(dt1);
     KB[0].scale(dt1);
+
 //    KA[0] *= dt0; KA[1] *= dt1.clone();
 //    KB[0] *= dt1;
 
-    let UA0 = sp_a.exp(&KA[0]);
-    let UB0 = sp_b.exp(&KB[0]);
+    let UA0 = sp_a.exp(KA[0].clone());
+    let UB0 = sp_b.exp(KB[0].clone());
 
     let (kv_init, kv_rest) = KV.split_at_mut(s);
     let kvf = &mut kv_rest[0];

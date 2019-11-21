@@ -18,14 +18,15 @@ where T: Ring + Copy + SupersetOf<f64>,
     fn lin_zero(&self) -> Self::L;
 
     /// Returns the exponential of the linear operator
-    fn exp(&mut self, l: &Self::L) -> Self::U;
+    fn exp(&mut self, l: Self::L) -> Self::U;
     /// Applies the exponential on a vector x
     fn map_exp(&mut self, u: &Self::U, x: & V) -> V;
 
     /// Evaluate multiple exponentials exp(k l) of rescalings of l
-    fn multi_exp(&mut self, l: &Self::L, k_arr: &[S]) -> Vec<Self::U>{
-        let mut l2 = self.lin_zero();
-        k_arr.iter().map(|&k| {l.scalar_multiply_to(k, &mut l2); self.exp(&mut l2)})
+    fn multi_exp(&mut self, l: Self::L, k_arr: &[S]) -> Vec<Self::U>{
+        k_arr.iter().map(|&k| {
+            let mut l2= l.clone(); l2.scale(k);
+            self.exp(l2) })
              .collect_vec()
     }
 }
