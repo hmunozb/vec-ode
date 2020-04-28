@@ -4,10 +4,10 @@ use num_complex::Complex;
 use num_traits::Float;
 use std::ops::{Add, Mul};
 
-use crate::{LinearCombination};
+use crate::{LinearCombinationSpace};
 use nalgebra::base::storage::StorageMut;
 
-impl<N, R, C, S, > LinearCombination<N> for Matrix<N, R, C, S>
+impl<N, R, C, S, > LinearCombinationSpace<N> for Matrix<N, R, C, S>
 where N: Scalar + ClosedAdd + ClosedSub + ClosedMul,
       R: Dim, C: Dim, S: StorageMut<N, R, C>
 {

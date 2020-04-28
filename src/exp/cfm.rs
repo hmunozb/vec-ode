@@ -22,18 +22,19 @@ pub fn cfm_exp<'a, Sp, T, S, V>(
     a: ArrayView1<'a, S>, sp: &mut Sp
 )
     where   Sp: ExponentialSplit<T, S, V>,
-            Sp::L : LinearCombination<S>,// + MulAssign<S> + for <'b> AddAssign<&'b Sp::L>,
+            //Sp::L : LinearCombinationSpace<S>,// + MulAssign<S> + for <'b> AddAssign<&'b Sp::L>,
             T: Ring + Copy + SupersetOf<f64>,
             S: Ring + Copy + From<T>,
             V: Clone
 {
 
-    m[0].scalar_multiply_to(a[0].clone(), k);
+    Sp::LC::scalar_multiply_to(&m[0], a[0].clone(), k);
+    //m[0].scalar_multiply_to(a[0].clone(), k);
     for (ai, mi) in a.iter().skip(1)
         .zip(m.iter().skip(1)){
-        k.add_scalar_mul(ai.clone(), mi);
+        Sp::LC::add_scalar_mul(k, ai.clone(), mi);
     }
-    k.scale(S::from(dt));
+    Sp::LC::scale(k, S::from(dt));
     let u = sp.exp(k.clone());
     *x1 = sp.map_exp(&u, x0);
 }
@@ -52,7 +53,7 @@ pub fn cfm_general<'a, Sp, T, S, V, Fun>(
     where
         Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
         Sp :ExponentialSplit<T, S, V>,
-        Sp::L : LinearCombination<S>,
+        //Sp::L : LinearCombinationSpace<S>,
         T: Ring + Copy + SupersetOf<f64>,
         S: Ring + Copy + From<T>,
         V: Clone + for <'b> SubAssign<&'b V>

@@ -9,14 +9,14 @@ fn midpoint<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T, sp: &mut Sp) -> Result<(), ODEError>
 where   Fun: FnMut(T) -> Sp::L,
         Sp : ExponentialSplit<T, S, V>,
-        Sp::L : LinearCombination<S>,
+        //Sp::L : LinearCombinationSpace<S>,
         T: RealField,
         S: Ring + Copy + From<T>,
         V: Clone
 {
     let t_mid = t + dt * T::from_subset(&0.5);
     let mut l = (*f)(t_mid);
-    l.scale(S::from(dt));
+    Sp::LC::scale(&mut l, S::from(dt));
     let u = sp.exp(l);
     *xf = sp.map_exp(&u, x0);
 
@@ -29,7 +29,7 @@ fn magnus_42<Fun, T, S, V, Sp>(
 ) -> Result<(), ODEError>
     where   Fun: FnMut(&[T]) -> Vec<Sp::L>,
             Sp : Commutator<T, S, V>,
-            Sp::L : Clone + LinearCombination<S>
+            Sp::L : Clone //+ LinearCombinationSpace<S>
             + MulAssign<S>
                 + for <'b> AddAssign<&'b Sp::L>,
             T: RealField,
@@ -55,8 +55,8 @@ fn magnus_42<Fun, T, S, V, Sp>(
 
     // ME 1
     let mut w1: Sp::L = l_vec[0].clone();
-    w1.add_assign_ref(&l_vec[1]);
-    w1.scale(S::from(b1));
+    Sp::LC::add_assign_ref(&mut w1, &l_vec[1]);
+    Sp::LC::scale(&mut w1, S::from(b1));
 
     let u1 = sp.exp(w1.clone());
     // 4th order ME

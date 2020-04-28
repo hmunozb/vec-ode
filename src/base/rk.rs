@@ -12,7 +12,34 @@ use crate::dat::rk::{rk45_ac, rk45_b, rk45_berr};
 use ndarray::iter::Lanes;
 use super::num_complex::Complex;
 
-pub trait LinearCombination<S>: Sized
+
+pub trait LinearCombination<S: Copy, V>{
+
+    fn scale(v: &mut V, k: S);
+    fn scalar_multiply_to(v: &V, k: S, target: &mut V);
+    fn add_scalar_mul(v: &mut V, k: S, other: &V);
+    fn add_assign_ref(v: &mut V, other: &V);
+    fn delta(v: &mut V, y: &V);
+    fn linear_combination(v: &mut V, v_arr: &[V], k_arr: &[S]){
+        if v_arr.is_empty() || k_arr.is_empty(){
+            panic!("linear_combination: slices cannot be empty")
+        }
+        if v_arr.len() != k_arr.len(){
+            panic!("linear_combination: slices must be the same length")
+        }
+
+        let (v0, v_arr) = v_arr.split_at(1);
+        let (k0, k_arr) = k_arr.split_at(1);
+
+        Self::scalar_multiply_to(&v0[0], k0[0].clone(), v);
+        for (vi, &k) in v_arr.iter().zip(k_arr.iter()){
+            Self::add_scalar_mul(v, k, vi);
+            //v.add_scalar_mul(k.clone(), vi);
+        }
+    }
+}
+
+pub trait LinearCombinationSpace<S>: Sized
 where S:Clone
 {
     fn scale(&mut self, k: S);
@@ -37,6 +64,35 @@ where S:Clone
         for (v, k) in v_arr.iter().zip(k_arr.iter()){
             self.add_scalar_mul(k.clone(), v);
         }
+    }
+}
+
+pub struct VecODELinearCombination;
+
+impl<S: Copy, V> LinearCombination<S, V> for VecODELinearCombination
+where V: LinearCombinationSpace<S>{
+    fn scale(v: &mut V, k: S) {
+        v.scale(k);
+    }
+
+    fn scalar_multiply_to(v: &V, k: S, target: &mut V) {
+        v.scalar_multiply_to(k, target);
+    }
+
+    fn add_scalar_mul(v: &mut V, k: S, other: & V) {
+        v.add_scalar_mul(k,  other);
+    }
+
+    fn add_assign_ref(v: &mut V, other: &V) {
+        v.add_assign_ref(other);
+    }
+
+    fn delta(v: &mut V, y: &V) {
+        v.delta(y);
+    }
+
+    fn linear_combination(v: &mut V, v_arr: &[V], k_arr: &[S]){
+        v.linear_combination(v_arr, k_arr)
     }
 }
 

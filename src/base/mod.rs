@@ -5,4 +5,5 @@ mod rk;
 
 pub use ode::*;
 pub use rk::RK45Solver;
-pub use rk::{LinearCombination};
+pub use rk::LinearCombination;
+pub use rk::LinearCombinationSpace;

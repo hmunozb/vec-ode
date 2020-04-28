@@ -4,13 +4,13 @@ use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
 use crate::exp::cfm::cfm_exp;
 use crate::base::{ODESolver};
 use crate::{ODEData, ODESolverBase, ODEError, ODEStep};
-use crate::base::LinearCombination;
+use crate::base::LinearCombinationSpace;
 use std::marker::PhantomData;
 use nalgebra::{Scalar};
 use ndarray::{ ArrayView1, ArrayView2};
 use itertools::Itertools;
 use num_complex::Complex;
-
+use crate::LinearCombination;
 
 
 /// Defines an exponential split exp(A+B), where A and B are known to be
@@ -50,6 +50,42 @@ where A: Clone, B: Clone, S: Clone
     _phantom: PhantomData<S>
 }
 
+pub struct DirectSumLinearCombination<A, VA, B, VB, S: Copy>
+where A : LinearCombination<S, VA>, B: LinearCombination<S, VB>,
+      VA: Clone, VB: Clone
+{
+    _phantom: PhantomData<(A, B, VA, VB, S)>
+}
+
+impl <A, VA: Clone, B, VB: Clone, S: Copy> LinearCombination<S, DirectSumL<VA, VB, S>>
+for DirectSumLinearCombination<A, VA, B, VB, S>
+    where A : LinearCombination<S, VA>, B: LinearCombination<S, VB>{
+    fn scale(v: &mut DirectSumL<VA, VB, S>, k: S) {
+        A::scale(&mut v.a, k);
+        B::scale(&mut v.b, k)
+    }
+
+    fn scalar_multiply_to(v: &DirectSumL<VA, VB, S>, k: S, target: &mut DirectSumL<VA, VB, S>) {
+        A::scalar_multiply_to(&v.a, k, &mut target.a);
+        B::scalar_multiply_to(&v.b, k, &mut target.b);
+    }
+
+    fn add_scalar_mul(v: &mut DirectSumL<VA, VB, S>, k: S, other: &DirectSumL<VA, VB, S>) {
+        A::add_scalar_mul(&mut v.a, k, &other.a);
+        B::add_scalar_mul(&mut v.b, k, &other.b);
+    }
+
+    fn add_assign_ref(v: &mut DirectSumL<VA, VB, S>, other: &DirectSumL<VA, VB, S>) {
+        A::add_assign_ref(&mut v.a, &other.a);
+        B::add_assign_ref(&mut v.b, &other.b);
+    }
+
+    fn delta(v: &mut DirectSumL<VA, VB, S>, y: &DirectSumL<VA, VB, S>) {
+        A::delta(&mut v.a, &y.a);
+        B::delta(&mut v.b, &y.b);
+    }
+}
+
 impl<A, B, S> DirectSumL<A, B, S>
 where A: Clone, B: Clone, S: Clone
 {
@@ -58,9 +94,11 @@ where A: Clone, B: Clone, S: Clone
     }
 }
 
-impl<A, B, S: Clone> LinearCombination<S> for DirectSumL<A, B, S>
-where   A : Clone + LinearCombination<S>,
-        B : Clone + LinearCombination<S>
+
+
+impl<A, B, S: Clone> LinearCombinationSpace<S> for DirectSumL<A, B, S>
+where   A : Clone + LinearCombinationSpace<S>,
+        B : Clone + LinearCombinationSpace<S>
 {
     fn scale(&mut self, k: S) {
         self.a.scale(k.clone());
@@ -107,6 +145,7 @@ where T: Ring + Copy + SupersetOf<f64>,
       SpB: ExponentialSplit<T, S, V>
 {
     type L = DirectSumL<SpA::L, SpB::L, S>;
+    type LC = DirectSumLinearCombination<SpA::LC, SpA::L, SpB::LC, SpB::L, S>;
     type U = (SpA::U, SpB::U);
 
     fn lin_zero(&self) -> Self::L{
@@ -190,10 +229,11 @@ for StrangSplit<T, S, V, SpA, SpB>
           V: Clone,
           SpA: ExponentialSplit<T, S, V>,
           SpB: ExponentialSplit<T, S, V>,
-          SpA::L : Clone + LinearCombination<S>,
-          SpB::L : Clone + LinearCombination<S>,
+          SpA::L : Clone, //+ LinearCombinationSpace<S>,
+          SpB::L : Clone //+ LinearCombinationSpace<S>,
 {
     type L = DirectSumL<SpA::L, SpB::L, S>;
+    type LC = DirectSumLinearCombination<SpA::LC, SpA::L, SpB::LC, SpB::L, S>;
     type U = (SpA::U, SpB::U);
 
     fn lin_zero(&self) -> Self::L{
@@ -203,7 +243,8 @@ for StrangSplit<T, S, V, SpA, SpB>
     fn exp(&mut self, l: Self::L) -> Self::U{
         let la = l.a;
         let mut lb = l.b;
-        lb.scale(S::from(T::from_subset(&0.5)));
+        SpB::LC::scale(&mut lb, S::from(T::from_subset(&0.5)));
+        //lb.scale(S::from(T::from_subset(&0.5)));
 
         let ua = self.sp_a.exp(la);
         let ub = self.sp_b.exp(lb);
@@ -218,7 +259,8 @@ for StrangSplit<T, S, V, SpA, SpB>
     fn multi_exp(&mut self, l: Self::L, k_arr: &[S]) -> Vec<Self::U>{
         let la = l.a;
         let mut lb = l.b;
-        lb.scale(S::from(T::from_subset(&0.5)));
+        SpB::LC::scale(&mut lb, S::from(T::from_subset(&0.5)));
+        //lb.scale(S::from(T::from_subset(&0.5)));
 
         let ua_vec = self.sp_a.multi_exp(la, k_arr );
         let ub_vec = self.sp_b.multi_exp(lb, k_arr);
@@ -292,11 +334,12 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
     where T: RealField,
           V: Clone,
           SpA: ExponentialSplit<T, Complex<T>, V>,
-          SpA::L : Clone + LinearCombination<Complex<T>>,
-          SpB::L : Clone + LinearCombination<Complex<T>>,
+          SpA::L : Clone, //+ LinearCombinationSpace<Complex<T>>,
+          SpB::L : Clone, //+ LinearCombinationSpace<Complex<T>>,
           SpB: ExponentialSplit<T, Complex<T>, V>
 {
     type L = DirectSumL<SpA::L, SpB::L, Complex<T>>;
+    type LC = DirectSumLinearCombination<SpA::LC, SpA::L, SpB::LC, SpB::L, Complex<T>>;
     type U = (SpA::U, Vec<SpB::U>);
 
     fn lin_zero(&self) -> Self::L{
@@ -307,7 +350,8 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
         use crate::dat::split_complex::SEMI_COMPLEX_O4_B as b_arr;
 
         let mut la1 = l.a;
-        la1.scale(Complex::from(T::from_subset(&0.25)));
+        SpA::LC::scale(&mut la1, Complex::from(T::from_subset(&0.25)));
+        //la1.scale(Complex::from(T::from_subset(&0.25)));
         let ua = self.sp_a.exp(la1);
         let lb1 = l.b;
         let k_arr = b_arr.iter()
@@ -338,8 +382,8 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
     where T: RealField,
           V: Clone,
           SpA: NormedExponentialSplit<T, Complex<T>, V>,
-          SpA::L : Clone + LinearCombination<Complex<T>>,
-          SpB::L : Clone + LinearCombination<Complex<T>>,
+          SpA::L : Clone, //+ LinearCombinationSpace<Complex<T>>,
+          SpB::L : Clone, //+ LinearCombinationSpace<Complex<T>>,
           SpB: ExponentialSplit<T, Complex<T>, V>{
     fn norm(&self, x: &V) -> T {
         self.sp_a.norm(x)
@@ -363,11 +407,12 @@ for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
     where T: RealField,
           V: Clone,
           SpA: ExponentialSplit<T, Complex<T>, V>,
-          SpA::L : Clone + LinearCombination<Complex<T>>,
-          SpB::L : Clone + LinearCombination<Complex<T>>,
+          SpA::L : Clone, // + LinearCombinationSpace<Complex<T>>,
+          SpB::L : Clone, // + LinearCombinationSpace<Complex<T>>,
           SpB: ExponentialSplit<T, Complex<T>, V>
 {
     type L = DirectSumL<SpA::L, SpB::L, Complex<T>>;
+    type LC = DirectSumLinearCombination<SpA::LC, SpA::L, SpB::LC, SpB::L, Complex<T>>;
     type U = (Vec<SpA::U>, Vec<SpB::U>);
 
     fn lin_zero(&self) -> Self::L {
@@ -435,11 +480,12 @@ for RKNR4ExpSplit<T, S, V, SpA, SpB>
           S: Ring + Copy + From<T>,
           V: Clone,
           SpA: ExponentialSplit<T, S, V>,
-          SpA::L : Clone + LinearCombination<S>,
-          SpB::L : Clone + LinearCombination<S>,
+          SpA::L : Clone, // + LinearCombinationSpace<S>,
+          SpB::L : Clone, // + LinearCombinationSpace<S>,
           SpB: ExponentialSplit<T, S, V>
 {
     type L = DirectSumL<SpA::L, SpB::L, S>;
+    type LC = DirectSumLinearCombination<SpA::LC, SpA::L, SpB::LC, SpB::L, S>;
     type U = (Vec<SpA::U>, Vec<SpB::U>);
 
     fn lin_zero(&self) -> Self::L {
@@ -472,8 +518,8 @@ pub fn split_exp_midpoint<SpA, SpB, T, S, V, Fun>(
 where   Fun: FnMut(T) -> (SpA::L, SpB::L),
         SpA :ExponentialSplit<T, S, V>,
         SpB :ExponentialSplit<T, S, V>,
-        SpA::L : LinearCombination<S>, //+ MulAssign<S>,
-        SpB::L : LinearCombination<S>, //+ MulAssign<S>,
+        //SpA::L : LinearCombinationSpace<S>, //+ MulAssign<S>,
+        //SpB::L : LinearCombinationSpace<S>, //+ MulAssign<S>,
         T: Ring + Copy + SupersetOf<f64>,
         S: Ring + Copy + From<T>,
         V: Clone
@@ -491,8 +537,8 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
     let (la, lb) : (SpA::L, SpB::L) = f(t);
     KA.push(la.clone()); KA.push(la);
     KB.push(lb);
-    KA[0].scale(dt0); KA[1].scale(dt1);
-    KB[0].scale(dt1);
+    SpA::LC::scale(&mut KA[0], dt0); SpA::LC::scale(&mut KA[1], dt1);
+    SpB::LC::scale(&mut KB[0], dt0);
 
 //    KA[0] *= dt0; KA[1] *= dt1.clone();
 //    KB[0] *= dt1;
@@ -524,8 +570,8 @@ where
     Fun: FnMut(&[T]) -> (Vec<SpA::L>, Vec<SpB::L>),
     SpA :ExponentialSplit<T, S, V>,
     SpB :ExponentialSplit<T, S, V>,
-    SpA::L : LinearCombination<S>,//MulAssign<S> + for <'b> AddAssign<&'b SpA::L>,
-    SpB::L : LinearCombination<S>, //MulAssign<S> + for <'b> AddAssign<&'b SpB::L>,
+    //SpA::L : LinearCombinationSpace<S>,//MulAssign<S> + for <'b> AddAssign<&'b SpA::L>,
+    //SpB::L : LinearCombinationSpace<S>, //MulAssign<S> + for <'b> AddAssign<&'b SpB::L>,
     T: Ring + Copy + SupersetOf<f64>,
     S: Scalar + Ring + Copy + From<T>,
     V: Clone
@@ -564,8 +610,8 @@ where
     Fun: FnMut(T) -> (SpA::L, SpB::L),
     SpA :ExponentialSplit<T, S, V>,
     SpB :ExponentialSplit<T, S, V>,
-    SpA::L : LinearCombination<S>, // MulAssign<S>,
-    SpB::L : LinearCombination<S>, // MulAssign<S>,
+    //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
+    //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
     T: Ring + Copy + SupersetOf<f64>,
     S: Ring + Copy + From<T>,
     V: Clone
@@ -581,8 +627,8 @@ where
 impl<SpA, SpB, Fun, S, V, T> ExpSplitMidpointSolver<SpA, SpB, Fun, S, V, T>
 where Fun: FnMut(T) -> (SpA::L, SpB::L),
       SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
-      SpA::L : LinearCombination<S>, // MulAssign<S>,
-      SpB::L : LinearCombination<S>, // MulAssign<S>,
+      //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
+      //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
       T: RealField,
       S: Ring + Copy + From<T>,
       V: Clone
@@ -600,8 +646,8 @@ impl<SpA, SpB, Fun, S, V, T> ODESolverBase
 for ExpSplitMidpointSolver<SpA, SpB, Fun, S, V, T>
 where Fun: FnMut(T) -> (SpA::L, SpB::L),
       SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
-      SpA::L : LinearCombination<S>, // MulAssign<S>,
-      SpB::L : LinearCombination<S>, // MulAssign<S>,
+      //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
+      //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
       T: RealField,
       S: Ring + Copy + From<T>,
       V: Clone
@@ -637,8 +683,8 @@ impl<SpA, SpB, Fun, S, V, T> ODESolver
 for ExpSplitMidpointSolver<SpA, SpB, Fun, S, V, T>
     where Fun: FnMut(T) -> (SpA::L, SpB::L),
           SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
-          SpA::L : LinearCombination<S>, // MulAssign<S>,
-          SpB::L : LinearCombination<S>, // MulAssign<S>,
+          //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
+          //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
           T: RealField,
           S: Ring + Copy + From<T>,
           V: Clone

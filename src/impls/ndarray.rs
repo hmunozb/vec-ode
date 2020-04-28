@@ -1,9 +1,9 @@
 use alga::general::{ClosedAdd, ClosedMul, ClosedSub};
 use ndarray::{ArrayBase, DataMut, Dimension, ScalarOperand};
 
-use crate::LinearCombination;
+use crate::LinearCombinationSpace;
 
-impl<A, S, D> LinearCombination<A> for ArrayBase<S, D>
+impl<A, S, D> LinearCombinationSpace<A> for ArrayBase<S, D>
 where   A: Copy + ClosedAdd + ClosedSub + ClosedMul + ScalarOperand,
         S: DataMut<Elem=A>,
         D: Dimension
