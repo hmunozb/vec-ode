@@ -116,7 +116,7 @@ pub struct ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     KA: Vec<Sp::L>,
     c: Vec<T>,
     alpha: Array2<S>,
-    alph_err: Array2<S>
+    alph_err: Option<Array2<S>>
 }
 
 impl<Sp, Fun, NormFn, S, V, T> ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
@@ -144,12 +144,19 @@ where
              CFM_R2_J1_GL.iter()
                  .map(|x|S::from(T::from_subset(x)))
                  .collect_vec()
-            ).unwrap();
+            ).unwrap().into();
         let mut dat = ODEData::new(t0, tf, x0.clone(), h);
         let adaptive_dat = ODEAdaptiveData::new_with_defaults(
             x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
 
         Self{f, norm, sp, dat, adaptive_dat, K, KA, c, alpha, alph_err}
+    }
+
+    /// Disable adaptive stage evaluation
+    pub fn no_adaptive(self) -> Self{
+        let mut me = self;
+        me.alph_err = None;
+        me
     }
 }
 
@@ -184,7 +191,7 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S
         dat.next_dt = dt;
         cfm_general(&mut self.f, dat.t,&dat.x, &mut dat.next_x, dt, &self.c, self.alpha.view(),
         &mut self.K, &mut self.KA, &mut self.sp, Some(&mut self.adaptive_dat.dx),
-                    Some(self.alph_err.view()))
+                    self.alph_err.as_ref().map(|a|a.view()))
     }
 
     fn reject_step(&mut self) -> ODEState<T>{
@@ -201,26 +208,26 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V,
                 V: Clone + for <'b> SubAssign<&'b V>
 {
 
-    fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
-        let step = step.map_dt(|dt| {
-            self.ode_data_mut().next_dt = dt.clone();
-            self.try_step(dt)});
-        let ad = &mut self.adaptive_dat;
-        if let ODEStep::Step(_) = step.clone(){
-            ad.dx_norm = (self.norm)(&ad.dx);
-            let f = ad.rtol / ad.dx_norm;
-            let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ), T::from_subset(&2.0));
-            let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
-
-            self.dat.update_step_size(new_h);
-
-            if f <= T::from_subset(&1.0){
-                return ODEStep::Reject;
-            }
-        }
-
-        step
-    }
+    // fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
+    //     let step = step.map_dt(|dt| {
+    //         self.ode_data_mut().next_dt = dt.clone();
+    //         self.try_step(dt)});
+    //     let ad = &mut self.adaptive_dat;
+    //     if let ODEStep::Step(_) = step.clone(){
+    //         ad.dx_norm = (self.norm)(&ad.dx);
+    //         let f = ad.rtol / ad.dx_norm;
+    //         let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ), T::from_subset(&2.0));
+    //         let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
+    //
+    //         self.dat.update_step_size(new_h);
+    //
+    //         if f <= T::from_subset(&1.0){
+    //             return ODEStep::Reject;
+    //         }
+    //     }
+    //
+    //     step
+    // }
 }
 
 impl<Sp, Fun, NormFn, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
@@ -236,5 +243,15 @@ impl<Sp, Fun, NormFn, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, No
 
     fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<T, V> {
         &mut self.adaptive_dat
+    }
+    fn norm(&mut self) -> T{
+        (self.norm)(&self.adaptive_dat.dx)
+    }
+    fn validate_adaptive(&self) -> Result<(), ()>{
+        if self.alph_err.is_some(){
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }

@@ -1,12 +1,12 @@
 use std::ops::{AddAssign, MulAssign};
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{Zero, FromPrimitive};
 use alga::general::{RealField, ClosedAdd};
 use alga::general::{Ring};
 use ndarray::{Ix1, Array1, Array2};
 use super::ode::{ODESolver, ODEState};
 use std::marker::PhantomData;
-use crate::{ODESolverBase, ODEData, ODEError, ODEStep};
+use crate::{ODESolverBase, ODEData, ODEError, ODEStep, ODEAdaptiveData, AdaptiveODESolver};
 
 use crate::dat::rk::{rk45_ac, rk45_b, rk45_berr};
 use ndarray::iter::Lanes;
@@ -60,6 +60,15 @@ impl<T: RealField> ButcherTableu<T>
                 Vec::from(b).into_iter().map_into().collect_vec()).unwrap(),
             b_err: b_err.map(|b|Array1::from_shape_vec(s,
                 Vec::from(b).into_iter().map_into().collect_vec()).unwrap())
+        }
+    }
+
+    pub fn from_vecs(ac: Vec<T>, b: Vec<T>, b_err: Option<Vec<T>>, s: usize) -> Self
+    {
+        ButcherTableu{
+            ac: Array2::from_shape_vec((s,s),ac).unwrap(),
+            b: Array1::from_shape_vec(s,b).unwrap(),
+            b_err: b_err.map(|b|Array1::from_shape_vec(s,b).unwrap())
         }
     }
 }
@@ -188,8 +197,8 @@ pub struct RK45Solver<V,Fun,S,T=f64>
 {
     f: Fun,
     dat: ODEData<T, V>,
-    x_err: V,
-    //h: T,
+    adaptive_dat: ODEAdaptiveData<T, V>,
+    x_err: Option<V>,
     tabl: ButcherTableu<T>,
     K: Vec<V>,
     _phantom: PhantomData<S>
@@ -198,20 +207,33 @@ pub struct RK45Solver<V,Fun,S,T=f64>
 pub type RK45RealSolver<V, Fun, T> = RK45Solver<V, Fun, T, T>;
 pub type RK45ComplexSolver<V, Fun, T> = RK45Solver<V, Fun, Complex<T>, T>;
 
-impl<'a,V,S,Fun> RK45Solver<V,Fun,S,f64>
+impl<'a,V,S,Fun,T> RK45Solver<V,Fun,S, T>
     where
-        Fun: FnMut(f64, &V, &mut V) -> Result<(),()>,
+        Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
         V: Clone + MulAssign<S>,
-        S: Ring + From<f64> + Copy{
+        S: Ring + From<T> + Copy,
+        T: RealField,{
 
-    pub fn new(f: Fun, t0: f64, tf: f64, x0: V, h: f64 ) -> Self{
+    pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T ) -> Self{
 
-        let x_err = x0.clone();
-        let tabl = ButcherTableu::from_slices(&rk45_ac, &rk45_b, Some(&rk45_berr), 6);
+        let x_err = Some(x0.clone());
+        let ac = rk45_ac.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        let b = rk45_b.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        let b_err = rk45_berr.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+
+        let tabl = ButcherTableu::from_vecs(ac, b, Some(b_err), 6);
         let mut K: Vec<V> = Vec::new();
         K.resize(7, x0.clone());
-        let dat = ODEData::new(t0, tf, x0, h);
-        RK45Solver{f, dat, x_err,  tabl, K, _phantom: PhantomData}
+        let dat = ODEData::new(t0, tf, x0.clone(), h);
+        let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
+            x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
+        RK45Solver{f, dat, adaptive_dat, x_err,  tabl, K, _phantom: PhantomData}
+    }
+
+    pub fn no_adaptive(self) -> Self{
+        let mut me = self;
+        me.x_err = None;
+        me
     }
 }
 
@@ -242,7 +264,7 @@ impl<V,Fun,S,T> ODESolverBase for RK45Solver<V,Fun,S,T>
         let dat = &mut self.dat;
 //        dat.next_dt = dt;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
-                          &mut dat.next_x, Some(&mut self.x_err),
+                          &mut dat.next_x, self.x_err.as_mut(),
                           dt, &self.tabl, &mut self.K,
                           PhantomData::<S>);
         res
@@ -254,8 +276,33 @@ impl<V,Fun,S,T> ODESolver for RK45Solver<V,Fun,S,T>
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           for <'b> V: AddAssign<&'b V>,
           V: Clone + MulAssign<S>,
-          S: Ring + From<T> + Copy{
+          S: Ring + From<T> + Copy
+{
 
+}
+
+impl<V,Fun,S,T> AdaptiveODESolver<T> for RK45Solver<V, Fun, S, T>
+    where T: RealField,
+          Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
+          for <'b> V: AddAssign<&'b V>,
+          V: Clone + MulAssign<S>,
+          S: Ring + From<T> + Copy
+{
+    fn ode_adapt_data(&self) -> &ODEAdaptiveData<T, Self::RangeType> {
+        &self.adaptive_dat
+    }
+
+    fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<T, Self::RangeType> {
+        &mut self.adaptive_dat
+    }
+
+    fn norm(&mut self) -> Self::TField {
+        unimplemented!()
+    }
+
+    fn validate_adaptive(&self) -> Result<(), ()> {
+        if self.x_err.is_some() { Ok(())} else {Err(())}
+    }
 }
 
 pub struct RK45AdaptiveSolver<V,Fun,S,T=f64>

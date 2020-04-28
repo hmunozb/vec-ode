@@ -1,6 +1,6 @@
 use alga::general::{Ring, SupersetOf, RealField};
 use std::ops::{MulAssign, AddAssign, SubAssign};
-use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState, LinearCombination};
+use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState, LinearCombination, AdaptiveODESolver, ODEAdaptiveData};
 use std::marker::PhantomData;
 use num_traits::Float;
 use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
@@ -25,7 +25,7 @@ where   Fun: FnMut(T) -> Sp::L,
 
 fn magnus_42<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T,
-    x_err: &mut V, sp: &mut Sp,
+    x_err: Option<&mut V>, sp: &mut Sp,
 ) -> Result<(), ODEError>
     where   Fun: FnMut(&[T]) -> Vec<Sp::L>,
             Sp : Commutator<T, S, V>,
@@ -71,8 +71,11 @@ fn magnus_42<Fun, T, S, V, Sp>(
     //let u_err = sp.exp(&err_w1);
 
     *xf = sp.map_exp(&u, x0);
-    *x_err = sp.map_exp(&u1, x0);
-    *x_err -= xf;
+    if let Some(xe) = x_err{
+        *xe = sp.map_exp(&u1, x0);
+        *xe -= xf;
+    }
+
 
     Ok(())
 }
@@ -165,11 +168,12 @@ pub struct MagnusExpLinearSolver<Sp, Fun, S, V, T>
     f: Fun,
     sp: Sp,
     dat: ODEData<T, V>,
-    x_err: V,
-    dt_range: (T, T),
-    atol:T,
-    rtol:T,
-    err: T,
+    adaptive_dat: ODEAdaptiveData<T, V>,
+    x_err: Option<V>,
+    //dt_range: (T, T),
+    //atol:T,
+    //rtol:T,
+    //err: T,
     _phantom: PhantomData<S>
 }
 
@@ -182,42 +186,44 @@ impl<Sp, Fun, S, V, T> MagnusExpLinearSolver<Sp, Fun, S, V, T>
                 V: Clone
 {
     pub fn new(f: Fun, t0: T, tf: T, x0: V, sp: Sp) -> Self{
-        let x_err = x0.clone();
+        let x_err = Some(x0.clone());
         let h = T::from_subset(&1.0e-3);
-        let dat = ODEData::new(t0, tf, x0, h);
+        let dat = ODEData::new(t0, tf, x0.clone(), h);
+        let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
+        x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
         let dt_range = (T::from_subset(&1.0e-6), T::from_subset(&1.0));
         let atol = T::from_subset(&1.0e-6);
         let rtol = T::from_subset(&1.0e-6);
         f64::epsilon();
-        Self{f, sp, dat, x_err, dt_range, atol, rtol, err: T::zero(), _phantom: PhantomData}
+        Self{f, sp, dat, adaptive_dat, x_err, _phantom: PhantomData}
     }
 
-    pub fn with_step_range(mut self, dt_min: T, dt_max: T) -> Self{
-        if dt_min <= T::zero() || dt_max <= T::zero() || dt_max <= dt_min {
-            panic!("Invalid step range: ({}, {})", dt_min, dt_max);
-        }
+    // pub fn with_step_range(mut self, dt_min: T, dt_max: T) -> Self{
+    //     if dt_min <= T::zero() || dt_max <= T::zero() || dt_max <= dt_min {
+    //         panic!("Invalid step range: ({}, {})", dt_min, dt_max);
+    //     }
+    //
+    //     let dt_range = (dt_min, dt_max);
+    //     let h = T::sqrt(dt_min*dt_max);
+    //     self.dat.reset_step_size(h);
+    //     self
+    // }
 
-        let dt_range = (dt_min, dt_max);
-        let h = T::sqrt(dt_min*dt_max);
-        self.dat.reset_step_size(h);
-        self
-    }
+    // pub fn with_init_step(mut self, h: T) -> Self{
+    //     if h < self.dt_range.0 || h > self.dt_range.1{
+    //         panic!("Step {} is not inside the range ({}, {})",
+    //                h, self.dt_range.0, self.dt_range.0);
+    //     }
+    //     self.dat.reset_step_size(h);
+    //     self
+    // }
 
-    pub fn with_init_step(mut self, h: T) -> Self{
-        if h < self.dt_range.0 || h > self.dt_range.1{
-            panic!("Step {} is not inside the range ({}, {})",
-                   h, self.dt_range.0, self.dt_range.0);
-        }
-        self.dat.reset_step_size(h);
-        self
-    }
-
-    pub fn with_tolerance(self, atol: T, rtol: T) -> Self {
-        if atol <= T::zero() || rtol <= T::zero(){
-            panic!("Invalid tolerances: atol={}, rtol={}", atol, rtol);
-        }
-        Self{atol, rtol, ..self}
-    }
+    // pub fn with_tolerance(self, atol: T, rtol: T) -> Self {
+    //     if atol <= T::zero() || rtol <= T::zero(){
+    //         panic!("Invalid tolerances: atol={}, rtol={}", atol, rtol);
+    //     }
+    //     Self{atol, rtol, ..self}
+    // }
 }
 
 impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
@@ -250,7 +256,7 @@ impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
         let dat = &mut self.dat;
 //        dat.next_dt = dt;
         let res = magnus_42(&mut self.f, dat.t.clone(), &dat.x, &mut dat.next_x,
-                  dt, &mut self.x_err, &mut self.sp);
+                  dt, self.x_err.as_mut(), &mut self.sp);
         res
 
     }
@@ -269,22 +275,55 @@ impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
                 S: Ring + Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>
 {
-    fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
-        let step = step.map_dt(|dt| {
-            self.ode_data_mut().next_dt = dt.clone();
-            self.try_step(dt)});
+    // fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
+    //     let step = step.map_dt(|dt| {
+    //         self.ode_data_mut().next_dt = dt.clone();
+    //         self.try_step(dt)});
+    //
+    //     if let ODEStep::Step(_) = step.clone(){
+    //         self.err = self.sp.norm(&self.x_err);
+    //         let f = self.rtol / self.err;
+    //         //let new_h = T::from_subset(&0.9) * T::powf(f, T::from_subset(&(1.0/3.0))) * self.dat.h;
+    //         let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ),
+    //                             T::from_subset(&2.0));
+    //         let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
+    //         self.dat.update_step_size(new_h);
+    //
+    //         if f <= T::one(){
+    //             return ODEStep::Reject;
+    //         }
+    //     }
+    //
+    //     step
+    // }
+}
 
-        if let ODEStep::Step(_) = step.clone(){
-            self.err = self.sp.norm(&self.x_err);
-            let f = self.rtol / self.err;
-            let new_h = T::from_subset(&0.9) * T::powf(f, T::from_subset(&(1.0/3.0))) * self.dat.h;
-            self.dat.update_step_size(new_h);
+impl<Sp, Fun, S, V, T> AdaptiveODESolver<T> for MagnusExpLinearSolver<Sp, Fun, S, V, T>
+    where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
+                Sp : Commutator<T, S, V> + NormedExponentialSplit<T, S, V>,
+                Sp::L : MulAssign<S>
+                + for <'b> AddAssign<&'b Sp::L>,
+                T: RealField,
+                S: Ring + Copy + From<T>,
+                V: Clone + for <'b> SubAssign<&'b V>
+{
+    fn ode_adapt_data(&self) -> &ODEAdaptiveData<T, V> {
+        &self.adaptive_dat
+    }
 
-            if f <= T::one(){
-                return ODEStep::Reject;
-            }
+    fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<T, V> {
+        &mut self.adaptive_dat
+    }
+
+    fn norm(&mut self) -> T{
+        self.sp.norm(&self.adaptive_dat.dx)
+    }
+
+    fn validate_adaptive(&self) -> Result<(), ()>{
+        if self.x_err.is_some(){
+            Ok(())
+        } else {
+            Err(())
         }
-
-        step
     }
 }

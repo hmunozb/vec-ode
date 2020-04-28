@@ -176,7 +176,7 @@ where V: Clone, T: Clone + RealField {
 }
 
 pub trait ODESolverBase: Sized{
-    type TField: RealField;
+    type TField: RealField+Copy;
     type RangeType: Clone;
 
     fn ode_data(&self) -> & ODEData<Self::TField, Self::RangeType>;
@@ -228,40 +228,27 @@ pub trait ODESolver : ODESolverBase{
     fn step(&mut self) -> ODEState<Self::TField>{
         let dt_opt = self.step_size();
         let res = self.handle_try_step(dt_opt);
-        match res.clone(){
-            ODEStep::Step(_) =>{
-                self.accept_step();
-                ODEState::Ok(res)
-            },
-            ODEStep::Chkpt =>{
-                self.checkpoint(false);
-                ODEState::Ok(res)
-            },
-            ODEStep::Reject => {
-                self.reject_step()
-            }
-            ODEStep::End =>{
-                self.checkpoint(true);
-                ODEState::Done
-            },
-            ODEStep::Err(e) =>{
-                ODEState::Err(e)
-            }
-        }
+        apply_step(self, res)
     }
 
 }
 
-pub trait AdaptiveODESolver<T: RealField>: ODESolverBase<TField=T>{
+pub trait AdaptiveODESolver<T: RealField>: ODESolver<TField=T>{
+
     fn ode_adapt_data(&self) -> & ODEAdaptiveData<T, Self::RangeType>;
     fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<T, Self::RangeType>;
+    /// Return the norm of the most recent ODE x error (may be a mutable calculation)
+    fn norm(&mut self) -> Self::TField;
+    fn validate_adaptive(&self) -> Result<(), ()>{
+        Ok(())
+    }
 
     fn with_step_range(mut self, dt_min: T, dt_max: T) -> Self{
         if dt_min <= T::zero() || dt_max <= T::zero() || dt_max <= dt_min {
             panic!("Invalid step range: ({}, {})", dt_min, dt_max);
         }
 
-        let dt_range = (dt_min, dt_max);
+        //let dt_range = (dt_min, dt_max);
         let h = T::sqrt(dt_min*dt_max);
         {
             let ad = self.ode_adapt_data_mut();
@@ -298,6 +285,40 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolverBase<TField=T>{
     }
 
 
+    /// Try the step and adaptively change the step size from
+    /// the resulting error estimate. Reject if error is too large
+    fn handle_step_adaptive(&mut self, step: ODEStep<T>) -> ODEStep<T>{
+        self.validate_adaptive().expect("adaptive step validation failed");
+
+        let h = self.ode_data().h.clone();
+        let step = self.handle_try_step(step);
+        if let ODEStep::Step(_) = step.clone(){
+            let dx_norm = self.norm();
+            let ad = self.ode_adapt_data_mut();
+            ad.dx_norm = dx_norm;
+            let f = ad.rtol / ad.dx_norm;
+            let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ),
+                                T::from_subset(&2.0));
+            let new_h = T::min(T::max(fp_lim * h, ad.min_dt), ad.max_dt);
+
+            self.ode_data_mut().update_step_size(new_h);
+
+            if f <= T::from_subset(&1.0){
+                return ODEStep::Reject;
+            }
+        }
+
+        step
+    }
+
+    /// Perform a single iteration of the adaptive ODE
+    fn step_adaptive(&mut self) -> ODEState<Self::TField>{
+        let dt_opt = self.step_size();
+        let res = self.handle_step_adaptive(dt_opt);
+        apply_step(self, res)
+    }
+
+
 }
 
 pub fn check_step<T : RealField>(t0: T, tf: T, dt: T) -> Option<T>{
@@ -305,9 +326,33 @@ pub fn check_step<T : RealField>(t0: T, tf: T, dt: T) -> Option<T>{
     if rem_t.relative_eq(&T::zero(), T::default_epsilon(), T::default_max_relative()){
         return None;
     }
-    if rem_t.clone() < dt.clone(){
-        return Some(rem_t);
+    if rem_t.clone() < dt.clone() {
+        Some(rem_t)
     } else {
-        return Some(dt);
+        Some(dt)
+    }
+}
+
+/// Return the state corresponding to the step taken by the solver
+pub fn apply_step<D: ODESolver>(d: &mut D, step: ODEStep<D::TField>) -> ODEState<D::TField>{
+    match step.clone(){
+        ODEStep::Step(_) =>{
+            d.accept_step();
+            ODEState::Ok(step)
+        },
+        ODEStep::Chkpt =>{
+            d.checkpoint(false);
+            ODEState::Ok(step)
+        },
+        ODEStep::Reject => {
+            d.reject_step()
+        }
+        ODEStep::End =>{
+            d.checkpoint(true);
+            ODEState::Done
+        },
+        ODEStep::Err(e) =>{
+            ODEState::Err(e)
+        }
     }
 }
