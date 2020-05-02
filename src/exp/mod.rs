@@ -2,14 +2,15 @@ pub mod split_exp;
 pub mod magnus;
 pub mod cfm;
 
-use crate::base::LinearCombinationSpace;
-use alga::general::{Ring, SupersetOf};
+use crate::RealField;
+
+
 
 /// Trait to define an exponential split for operator splitting solvers
 /// The linear operators must have linear combinations defined
 pub trait ExponentialSplit<T, S, V>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
+where T:  RealField,
+      S:  Copy + From<T>,
       V: Clone
 {
     type L: Clone ;//+ LinearCombinationSpace<S>;  //+ MulAssign<S>;
@@ -34,8 +35,8 @@ where T: Ring + Copy + SupersetOf<f64>,
 }
 
 pub trait NormedExponentialSplit<T, S, V> : ExponentialSplit<T, S, V>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
+where T:  RealField,
+      S:  Copy + From<T>,
       V: Clone
 {
     /// Calculates the norm of a vector x
@@ -44,8 +45,8 @@ where T: Ring + Copy + SupersetOf<f64>,
 }
 
 pub trait Commutator<T, S, V> : ExponentialSplit<T, S, V>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
+where T:  RealField,
+      S:  Copy + From<T>,
       V: Clone
 {
     /// Compute the commutator of the two linear operators

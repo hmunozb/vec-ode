@@ -1,7 +1,14 @@
-use alga::general::{RealField};
-use approx::RelativeEq;
-use num_traits::Zero;
+//use alga::general::{RealField};
+use crate::RealField;
+
+use num_traits::{FromPrimitive};
 use std::mem::swap;
+
+use crate::from_f64;
+
+pub trait Normed<R: Copy, V> {
+    fn norm(v: &V) -> R;
+}
 
 #[derive(Clone)]
 pub struct ODEError{
@@ -48,7 +55,7 @@ where T: Clone + Copy
 
 /// Generic utility struct to group together ODE state variables
 pub struct ODEData<T, V>
-where V: Clone, T: Clone
+where V: Clone, T: Copy
 {
     pub t0: T,
     pub tf: T,
@@ -67,7 +74,7 @@ where V: Clone, T: Clone
 
 /// Group together data needed by adaptive solvers
 pub struct ODEAdaptiveData<T, V>
-    where V: Clone, T: Clone
+    where V: Clone, T: Copy
 {
     pub dx: V,
     pub atol: T,
@@ -83,17 +90,18 @@ pub struct ODEAdaptiveData<T, V>
 impl<T, V> ODEAdaptiveData<T, V>
 where V: Clone, T: RealField{
     pub fn new(init_dx: V, order: T, min_dt: T, max_dt: T) -> Self{
-        let atol = T::from_subset(&1.0e-6);
-        let rtol = T::from_subset(&1.0e-4);
+        //let atol = T::from_f64(1.0e-6).unwrap();
+        let atol = from_f64!(1.0e-6);
+        let rtol = T::from_f64(1.0e-4).unwrap();
         let dx_norm = T::zero();
-        let alpha = T::from_subset(&0.9);
+        let alpha = T::from_f64(0.9).unwrap();
         let pow = order.recip();
 
         Self{dx: init_dx, atol, rtol, dx_norm, alpha, min_dt, max_dt, pow}
     }
     pub fn new_with_defaults(init_dx: V, order: T) -> Self{
-        let min_dt = T::from_subset(&1.0e-6);
-        let max_dt = T::from_subset(&1.0);
+        let min_dt = T::from_f64(1.0e-6).unwrap();
+        let max_dt = T::from_f64(1.0).unwrap();
         Self::new(init_dx, order, min_dt, max_dt)
     }
     pub fn with_alpha(self, alpha: T) -> Self{
@@ -107,11 +115,11 @@ where V: Clone, T: RealField{
 }
 
 impl<T, V> ODEData<T, V>
-where V: Clone, T: Clone + RealField {
+where V: Clone, T: RealField {
     pub fn new(t0: T, tf: T, x0: V, h: T) -> Self{
         let x = x0.clone();
         let t = t0.clone();
-        let mut t_list = vec![t0, tf];
+        let t_list = vec![t0, tf];
         let tgt_t = 0;
         let next_x = x0.clone();
         let next_dt = h;
@@ -159,7 +167,7 @@ where V: Clone, T: Clone + RealField {
 
     /// Updates the checkpoint index.
     /// If the solver is adaptive, also backtrack to the last accepted step size
-    pub fn checkpoint_update(&mut self, end: bool){
+    pub fn checkpoint_update(&mut self, _end: bool){
         self.tgt_t += 1;
         self.h = self.prev_h;
     }
@@ -176,7 +184,7 @@ where V: Clone, T: Clone + RealField {
 }
 
 pub trait ODESolverBase: Sized{
-    type TField: RealField+Copy;
+    type TField: RealField;
     type RangeType: Clone;
 
     fn ode_data(&self) -> & ODEData<Self::TField, Self::RangeType>;
@@ -208,7 +216,7 @@ pub trait ODESolverBase: Sized{
     /// Handle a step rejection. Adaptive solvers should adjust their step size and continue
     /// if possible. Rejection is an error for non-adaptive solvers
     fn reject_step(&mut self) -> ODEState<Self::TField>{
-        let (t, v) = self.current();
+        let (t, _v) = self.current();
         ODEState::Err(ODEError{msg: format!("Rejected step at time {}", t)})
     }
 }
@@ -269,7 +277,7 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolver<TField=T>{
             panic!("Step {} is not inside the range ({}, {})",
                    h, ad.min_dt, ad.max_dt);
         }
-        let mut dat = self.ode_data_mut();
+        let dat = self.ode_data_mut();
         dat.reset_step_size(h);
         self
     }
@@ -297,13 +305,14 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolver<TField=T>{
             let ad = self.ode_adapt_data_mut();
             ad.dx_norm = dx_norm;
             let f = ad.rtol / ad.dx_norm;
-            let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ),
-                                T::from_subset(&2.0));
+            let fp_lim =T::min( T::max(ad.step_size_mul(f) ,
+                                       from_f64!(0.3) ),
+                                from_f64!(2.0));
             let new_h = T::min(T::max(fp_lim * h, ad.min_dt), ad.max_dt);
 
             self.ode_data_mut().update_step_size(new_h);
 
-            if f <= T::from_subset(&1.0){
+            if f <= from_f64!(1.0){
                 return ODEStep::Reject;
             }
         }
@@ -320,6 +329,49 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolver<TField=T>{
 
 
 }
+
+// pub struct AdaptiveODEController<S: ODESolver>{
+//     pub inner_solver: S,
+//     adaptive_dat: ODEAdaptiveData<S::TField, S::RangeType>,
+//     //norm: Normed<S::TField, S::RangeType>
+// }
+//
+// impl<S: ODESolver> ODESolverBase for AdaptiveODEController<S>{
+//     type TField = S::TField;
+//     type RangeType = S::RangeType;
+//
+//     fn ode_data(&self) -> &ODEData<Self::TField, Self::RangeType> {
+//         self.inner_solver.ode_data()
+//     }
+//
+//     fn ode_data_mut(&mut self) -> &mut ODEData<Self::TField, Self::RangeType> {
+//         self.inner_solver.ode_data_mut()
+//     }
+//
+//     fn into_ode_data(self) -> ODEData<Self::TField, Self::RangeType> {
+//         self.inner_solver.into_ode_data()
+//     }
+//
+//     fn try_step(&mut self, dt: Self::TField) -> Result<(), ODEError> {
+//
+//     }
+// }
+//
+// impl<S: ODESolver> ODESolver for AdaptiveODEController<S>{ }
+//
+// impl<S: ODESolver> AdaptiveODESolver<S::TField> for AdaptiveODEController<S>{
+//     fn ode_adapt_data(&self) -> &ODEAdaptiveData<Self::TField, Self::RangeType> {
+//         &self.adaptive_dat
+//     }
+//
+//     fn ode_adapt_data_mut(&mut self) -> &mut ODEAdaptiveData<<S as ODESolverBase>::TField, Self::RangeType> {
+//         &mut self.adaptive_dat
+//     }
+//
+//     fn norm(&mut self) -> Self::TField {
+//         self.norm::
+//     }
+// }
 
 pub fn check_step<T : RealField>(t0: T, tf: T, dt: T) -> Option<T>{
     let rem_t: T = tf.clone() - t0.clone();

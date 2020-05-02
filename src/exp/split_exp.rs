@@ -1,16 +1,20 @@
-use std::ops::{MulAssign, AddAssign};
-use alga::general::{Ring, SupersetOf, RealField, ComplexField, SubsetOf};
+
+use std::ops::{MulAssign};
+use crate::{RealField, from_c64};
+//use alga::general::{SubsetOf};
 use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
 use crate::exp::cfm::cfm_exp;
 use crate::base::{ODESolver};
-use crate::{ODEData, ODESolverBase, ODEError, ODEStep};
+use crate::{ODEData, ODESolverBase, ODEError};
 use crate::base::LinearCombinationSpace;
 use std::marker::PhantomData;
-use nalgebra::{Scalar};
-use ndarray::{ ArrayView1, ArrayView2};
+//use nalgebra::{Scalar};
+use ndarray::{ ArrayView2};
 use itertools::Itertools;
 use num_complex::Complex;
+
 use crate::LinearCombination;
+use crate::from_f64;
 
 
 /// Defines an exponential split exp(A+B), where A and B are known to be
@@ -18,8 +22,8 @@ use crate::LinearCombination;
 /// If both splits have a commutator, the commutator trait is also implemented
 /// as the direct sum of each commutator.
 pub struct CommutativeExpSplit<T, S, V, SpA, SpB>
-where   T: Ring + Copy + SupersetOf<f64>,
-        S: Ring + Copy + From<T>,
+where   T: RealField,
+        S: Copy + From<T>,
         V: Clone,
         SpA: ExponentialSplit<T, S, V>,
         SpB: ExponentialSplit<T, S, V>
@@ -30,8 +34,8 @@ where   T: Ring + Copy + SupersetOf<f64>,
 }
 
 impl<T, S, V, SpA, SpB> CommutativeExpSplit<T, S, V, SpA, SpB>
-where   T: Ring + Copy + SupersetOf<f64>,
-        S: Ring + Copy + From<T>,
+where   T: RealField,
+        S:  Copy + From<T>,
         V: Clone,
         SpA: ExponentialSplit<T, S, V>,
         SpB: ExponentialSplit<T, S, V>
@@ -138,8 +142,8 @@ where A: Clone + MulAssign<S>,
 
 impl<T, S, V, SpA, SpB> ExponentialSplit<T, S, V>
 for CommutativeExpSplit<T, S, V, SpA, SpB>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
+where T:  RealField,
+      S:  Copy + From<T>,
       V: Clone,
       SpA: ExponentialSplit<T, S, V>,
       SpB: ExponentialSplit<T, S, V>
@@ -174,8 +178,8 @@ where T: Ring + Copy + SupersetOf<f64>,
 
 impl<T, S, V, SpA, SpB> NormedExponentialSplit<T, S, V>
 for CommutativeExpSplit<T, S, V, SpA, SpB>
-    where T: Ring + Copy + SupersetOf<f64>,
-          S: Ring + Copy + From<T>,
+    where T:  RealField,
+          S:  Copy + From<T>,
           V: Clone,
           SpA: NormedExponentialSplit<T, S, V>,
           SpB: ExponentialSplit<T, S, V>{
@@ -186,8 +190,8 @@ for CommutativeExpSplit<T, S, V, SpA, SpB>
 
 impl<T, S, V, SpA, SpB> Commutator<T, S, V>
 for CommutativeExpSplit<T, S, V, SpA, SpB>
-where T: Ring + Copy + SupersetOf<f64>,
-      S: Ring + Copy + From<T>,
+where T:  RealField,
+      S:  Copy + From<T>,
       V: Clone,
       SpA: Commutator<T, S, V>,
       SpB: Commutator<T, S, V>{
@@ -200,8 +204,8 @@ where T: Ring + Copy + SupersetOf<f64>,
 
 #[derive(Clone)]
 pub struct StrangSplit<T, S, V, SpA, SpB>
-where   T: Ring + Copy + SupersetOf<f64>,
-        S: Ring + Copy + From<T>,
+where   T:  RealField,
+        S:  Copy + From<T>,
         V: Clone,
         SpA: ExponentialSplit<T, S, V>,
         SpB: ExponentialSplit<T, S, V>{
@@ -211,8 +215,8 @@ where   T: Ring + Copy + SupersetOf<f64>,
 }
 
 impl<T, S, V, SpA, SpB> StrangSplit<T, S, V, SpA, SpB>
-    where   T: Ring + Copy + SupersetOf<f64>,
-            S: Ring + Copy + From<T>,
+    where   T:  RealField,
+            S:  Copy + From<T>,
             V: Clone,
             SpA: ExponentialSplit<T, S, V>,
             SpB: ExponentialSplit<T, S, V>
@@ -224,8 +228,8 @@ impl<T, S, V, SpA, SpB> StrangSplit<T, S, V, SpA, SpB>
 
 impl<T, S, V, SpA, SpB> ExponentialSplit<T, S, V>
 for StrangSplit<T, S, V, SpA, SpB>
-    where T: Ring + Copy + SupersetOf<f64>,
-          S: Ring + Copy + From<T>,
+    where T:  RealField,
+          S:  Copy + From<T>,
           V: Clone,
           SpA: ExponentialSplit<T, S, V>,
           SpB: ExponentialSplit<T, S, V>,
@@ -243,7 +247,7 @@ for StrangSplit<T, S, V, SpA, SpB>
     fn exp(&mut self, l: Self::L) -> Self::U{
         let la = l.a;
         let mut lb = l.b;
-        SpB::LC::scale(&mut lb, S::from(T::from_subset(&0.5)));
+        SpB::LC::scale(&mut lb, S::from(from_f64!(T, 0.5)));
         //lb.scale(S::from(T::from_subset(&0.5)));
 
         let ua = self.sp_a.exp(la);
@@ -259,7 +263,7 @@ for StrangSplit<T, S, V, SpA, SpB>
     fn multi_exp(&mut self, l: Self::L, k_arr: &[S]) -> Vec<Self::U>{
         let la = l.a;
         let mut lb = l.b;
-        SpB::LC::scale(&mut lb, S::from(T::from_subset(&0.5)));
+        SpB::LC::scale(&mut lb, S::from(from_f64!(T, 0.5)));
         //lb.scale(S::from(T::from_subset(&0.5)));
 
         let ua_vec = self.sp_a.multi_exp(la, k_arr );
@@ -275,8 +279,8 @@ for StrangSplit<T, S, V, SpA, SpB>
 /// over complex scalars
 #[derive(Clone)]
 pub struct SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
-    where   T: Ring + Copy + SupersetOf<f64>,
-            S: Ring + Copy + From<T>,
+    where   T:  RealField,
+            S:  Copy + From<T>,
             V: Clone,
             SpA: ExponentialSplit<T, S, V>,
             SpB: ExponentialSplit<T, S, V>
@@ -290,8 +294,8 @@ pub struct SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
 /// over complex scalars
 #[derive(Clone)]
 pub struct TripleJumpExpSplit<T, S, V, SpA, SpB>
-    where   T: Ring + Copy + SupersetOf<f64>,
-            S: Ring + Copy + From<T>,
+    where   T:  RealField,
+            S:  Copy + From<T>,
             V: Clone,
             SpA: ExponentialSplit<T, S, V>,
             SpB: ExponentialSplit<T, S, V>
@@ -305,8 +309,8 @@ pub struct TripleJumpExpSplit<T, S, V, SpA, SpB>
 /// over complex scalars
 #[derive(Clone)]
 pub struct ExpSplit<T, S, V, SpA, SpB>
-    where   T: Ring + Copy + SupersetOf<f64>,
-            S: Ring + Copy + From<T>,
+    where   T:  RealField,
+            S:  Copy + From<T>,
             V: Clone,
             SpA: ExponentialSplit<T, S, V>,
             SpB: ExponentialSplit<T, S, V>
@@ -317,8 +321,8 @@ pub struct ExpSplit<T, S, V, SpA, SpB>
 }
 
 impl<T, S, V, SpA, SpB> SemiComplexO4ExpSplit<T, S, V, SpA, SpB>
-    where   T: Ring + Copy + SupersetOf<f64>,
-            S: Ring + Copy + From<T>,
+    where   T:  RealField,
+            S:  Copy + From<T>,
             V: Clone,
             SpA: ExponentialSplit<T, S, V>,
             SpB: ExponentialSplit<T, S, V>
@@ -350,12 +354,13 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
         use crate::dat::split_complex::SEMI_COMPLEX_O4_B as b_arr;
 
         let mut la1 = l.a;
-        SpA::LC::scale(&mut la1, Complex::from(T::from_subset(&0.25)));
+        SpA::LC::scale(&mut la1, Complex::from(from_f64!(T, 0.25)));
         //la1.scale(Complex::from(T::from_subset(&0.25)));
         let ua = self.sp_a.exp(la1);
         let lb1 = l.b;
         let k_arr = b_arr.iter()
-            .map(|c| c.to_superset()).collect_vec();
+            .map(|&c| from_c64(c))
+            .collect_vec();
         let ub_arr = self.sp_b.multi_exp(lb1, &k_arr);
 
         (ua, ub_arr)
@@ -391,8 +396,8 @@ for SemiComplexO4ExpSplit<T, Complex<T>, V, SpA, SpB>
 }
 
 impl<T, S, V, SpA, SpB> TripleJumpExpSplit<T, S, V, SpA, SpB>
-    where   T: Ring + Copy + SupersetOf<f64>,
-            S: Ring + Copy + From<T>,
+    where   T:  RealField,
+            S:  Copy + From<T>,
             V: Clone,
             SpA: ExponentialSplit<T, S, V>,
             SpB: ExponentialSplit<T, S, V>
@@ -422,9 +427,9 @@ for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
     fn exp(&mut self, l: Self::L) -> Self::U {
         use crate::dat::split_complex::{TJ_O4_A, TJ_O4_B};
         let ka_arr = TJ_O4_A.iter()
-            .map(|c| c.to_superset()).collect_vec();
+            .map(|&c| from_c64(c)).collect_vec();
         let kb_arr = TJ_O4_B.iter()
-            .map(|c| c.to_superset()).collect_vec();
+            .map(|&c| from_c64(c)).collect_vec();
 
         let ua_arr = self.sp_a.multi_exp(l.a, &ka_arr);
         let ub_arr = self.sp_b.multi_exp(l.b, &kb_arr);
@@ -443,7 +448,7 @@ for TripleJumpExpSplit<T, Complex<T>, V, SpA, SpB>
 
 pub struct RKNR4ExpSplit<T, S, V, SpA, SpB>
 where  T: RealField,
-       S: Ring + Copy + From<T>,
+       S:  Copy + From<T>,
        V: Clone,
        SpA: ExponentialSplit<T, S, V>,
        SpB: ExponentialSplit<T, S, V>
@@ -458,7 +463,7 @@ where  T: RealField,
 impl<T, S, V, SpA, SpB>
 RKNR4ExpSplit<T, S, V, SpA, SpB>
 where  T: RealField,
-       S: Ring + Copy + From<T>,
+       S:  Copy + From<T>,
        V: Clone,
        SpA: ExponentialSplit<T, S, V>,
        SpB: ExponentialSplit<T, S, V>
@@ -466,9 +471,9 @@ where  T: RealField,
     pub fn new(sp_a: SpA, sp_b: SpB) -> Self{
         use crate::dat::split::{RKN_O4_A, RKN_O4_B};
         let ka_arr = RKN_O4_A.iter()
-            .map(|c| S::from(T::from_subset(c))).collect_vec();
+            .map(|&c| S::from(from_f64!(T, c))).collect_vec();
         let kb_arr = RKN_O4_B.iter()
-            .map(|c| S::from(T::from_subset(c))).collect_vec();
+            .map(|&c| S::from(from_f64!(T, c))).collect_vec();
 
         Self{sp_a, sp_b, ka_arr, kb_arr, _phantom: PhantomData}
     }
@@ -477,7 +482,7 @@ where  T: RealField,
 impl<T, S, V, SpA, SpB> ExponentialSplit<T, S, V>
 for RKNR4ExpSplit<T, S, V, SpA, SpB>
     where T: RealField,
-          S: Ring + Copy + From<T>,
+          S:  Copy + From<T>,
           V: Clone,
           SpA: ExponentialSplit<T, S, V>,
           SpA::L : Clone, // + LinearCombinationSpace<S>,
@@ -520,8 +525,8 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
         SpB :ExponentialSplit<T, S, V>,
         //SpA::L : LinearCombinationSpace<S>, //+ MulAssign<S>,
         //SpB::L : LinearCombinationSpace<S>, //+ MulAssign<S>,
-        T: Ring + Copy + SupersetOf<f64>,
-        S: Ring + Copy + From<T>,
+        T:  RealField,
+        S:  Copy + From<T>,
         V: Clone
 {
     let k_len = KV.len();
@@ -532,7 +537,7 @@ where   Fun: FnMut(T) -> (SpA::L, SpB::L),
     let mut KA :Vec<SpA::L> = Vec::new();
     let mut KB :Vec<SpB::L> = Vec::new();
 
-    let dt0 = S::from(dt.clone() * T::from_subset(&0.5));
+    let dt0 = S::from(dt.clone() * from_f64!(T, 0.5));
     let dt1 = S::from(dt);
     let (la, lb) : (SpA::L, SpB::L) = f(t);
     KA.push(la.clone()); KA.push(la);
@@ -572,8 +577,8 @@ where
     SpB :ExponentialSplit<T, S, V>,
     //SpA::L : LinearCombinationSpace<S>,//MulAssign<S> + for <'b> AddAssign<&'b SpA::L>,
     //SpB::L : LinearCombinationSpace<S>, //MulAssign<S> + for <'b> AddAssign<&'b SpB::L>,
-    T: Ring + Copy + SupersetOf<f64>,
-    S: Scalar + Ring + Copy + From<T>,
+    T: RealField,
+    S: Copy + From<T>,
     V: Clone
 {
     let k = c.len();
@@ -586,8 +591,8 @@ where
     }
 
     let (KV, tail) = KV.split_at_mut(s+1);
-    let (KA, KA_tail) = KA.split_at_mut(1);
-    let (KB, KB_tail) = KB.split_at_mut(1);
+    let (KA, _KA_tail) = KA.split_at_mut(1);
+    let (KB, _KB_tail) = KB.split_at_mut(1);
     let t_arr = c.iter().map(|ci| t + (*ci)*dt).collect_vec();
 
     let (va, vb) = (*f)(&t_arr);
@@ -612,8 +617,8 @@ where
     SpB :ExponentialSplit<T, S, V>,
     //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
     //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
-    T: Ring + Copy + SupersetOf<f64>,
-    S: Ring + Copy + From<T>,
+    T:  RealField,
+    S:  Copy + From<T>,
     V: Clone
 {
     f: Fun,
@@ -630,7 +635,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
       //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
       //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
       T: RealField,
-      S: Ring + Copy + From<T>,
+      S:  Copy + From<T>,
       V: Clone
 {
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T, sp_a: SpA, sp_b: SpB) -> Self{
@@ -649,7 +654,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
       //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
       //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
       T: RealField,
-      S: Ring + Copy + From<T>,
+      S:  Copy + From<T>,
       V: Clone
 {
     type TField = T;
@@ -686,7 +691,7 @@ for ExpSplitMidpointSolver<SpA, SpB, Fun, S, V, T>
           //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
           //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
           T: RealField,
-          S: Ring + Copy + From<T>,
+          S:  Copy + From<T>,
           V: Clone
 {
 
@@ -698,8 +703,8 @@ pub struct ExpSplitCFMSolver<SpA, SpB, Fun, S, V, T>
         SpA :ExponentialSplit<T, S, V>,
         SpB :ExponentialSplit<T, S, V>,
         SpA::L : MulAssign<S>, SpB::L : MulAssign<S>,
-        T: Ring + Copy + SupersetOf<f64>,
-        S: Ring + Copy + From<T>,
+        T:  RealField,
+        S:  Copy + From<T>,
         V: Clone
 {
     f: Fun,

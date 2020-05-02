@@ -1,26 +1,31 @@
-use std::ops::{AddAssign, MulAssign};
-use itertools::Itertools;
-use num_traits::{Zero, FromPrimitive};
-use alga::general::{RealField, ClosedAdd};
-use alga::general::{Ring};
-use ndarray::{Ix1, Array1, Array2};
-use super::ode::{ODESolver, ODEState};
-use std::marker::PhantomData;
-use crate::{ODESolverBase, ODEData, ODEError, ODEStep, ODEAdaptiveData, AdaptiveODESolver};
 
-use crate::dat::rk::{rk45_ac, rk45_b, rk45_berr};
+use std::ops::{AddAssign, MulAssign, Mul, SubAssign};
+use itertools::Itertools;
+
+//use alga::general::{RealField, ClosedAdd};
+use crate::RealField;
+
+use ndarray::{Ix1, Array1, Array2};
+use super::ode::{ODESolver};
+use std::marker::PhantomData;
+use crate::{ODESolverBase, ODEData, ODEError, ODEAdaptiveData, AdaptiveODESolver};
+use crate::base::ode::Normed;
+use crate::dat::rk::{RK45_AC, RK45_B, RK45_BERR};
 use ndarray::iter::Lanes;
 use super::num_complex::Complex;
 
+use itertools::zip_eq;
+use num_traits::Float;
 
-pub trait LinearCombination<S: Copy, V>{
+
+pub trait LinearCombination<S: Copy, V>  {
 
     fn scale(v: &mut V, k: S);
     fn scalar_multiply_to(v: &V, k: S, target: &mut V);
     fn add_scalar_mul(v: &mut V, k: S, other: &V);
     fn add_assign_ref(v: &mut V, other: &V);
     fn delta(v: &mut V, y: &V);
-    fn linear_combination(v: &mut V, v_arr: &[V], k_arr: &[S]){
+    fn linear_combination<S2: Copy + Into<S>>(v: &mut V, v_arr: &[V], k_arr: &[S2]){
         if v_arr.is_empty() || k_arr.is_empty(){
             panic!("linear_combination: slices cannot be empty")
         }
@@ -31,13 +36,34 @@ pub trait LinearCombination<S: Copy, V>{
         let (v0, v_arr) = v_arr.split_at(1);
         let (k0, k_arr) = k_arr.split_at(1);
 
-        Self::scalar_multiply_to(&v0[0], k0[0].clone(), v);
+        Self::scalar_multiply_to(&v0[0], k0[0].clone().into(), v);
         for (vi, &k) in v_arr.iter().zip(k_arr.iter()){
-            Self::add_scalar_mul(v, k, vi);
+            Self::add_scalar_mul(v, k.into(), vi);
             //v.add_scalar_mul(k.clone(), vi);
         }
     }
+
+    fn linear_combination_iter<'a, IV, IS, S2:'a + Copy + Into<S>>(
+        v: &'a mut V, v_iter: IV, s_iter: IS
+    ) -> Result<(), ()>
+    where IV: IntoIterator<Item=&'a V>, IS: IntoIterator<Item=&'a S2>
+    {
+        let mut v_iter = v_iter.into_iter();
+        let mut s_iter = s_iter.into_iter();
+        if let (Some(vi), Some(&si)) = (v_iter.next(), s_iter.next()){
+            Self::scalar_multiply_to(vi, si.into(), v);
+        } else {
+            return Err(());
+        }
+        for (vi, &si) in zip_eq(v_iter,s_iter){
+            Self::add_scalar_mul(v, si.into(), vi);
+        }
+
+        Ok(())
+    }
 }
+
+
 
 pub trait LinearCombinationSpace<S>: Sized
 where S:Clone
@@ -67,6 +93,7 @@ where S:Clone
     }
 }
 
+#[derive(Copy, Clone, Default)]
 pub struct VecODELinearCombination;
 
 impl<S: Copy, V> LinearCombination<S, V> for VecODELinearCombination
@@ -91,23 +118,23 @@ where V: LinearCombinationSpace<S>{
         v.delta(y);
     }
 
-    fn linear_combination(v: &mut V, v_arr: &[V], k_arr: &[S]){
-        v.linear_combination(v_arr, k_arr)
-    }
+    // fn linear_combination<S2: Copy + Into<S>>(v: &mut V, v_arr: &[V], k_arr: &[S2]){
+    //     v.linear_combination(v_arr, k_arr)
+    // }
 }
 
 
 #[derive(Debug)]
-pub struct ButcherTableu<T: RealField> {
+pub struct ButcherTableu<T> {
     ac: Array2<T>,
     b:Array1<T>,
     b_err: Option<Array1<T>>
 }
 
-impl<T: RealField> ButcherTableu<T>
+impl<T> ButcherTableu<T>
 {
     pub fn from_slices<T2>(ac: &[T2], b: &[T2], b_err: Option<&[T2]>, s: usize) -> Self
-    where T2: RealField + Into<T>,
+    where T2: Clone + Into<T>,
     {
         ButcherTableu{
             ac: Array2::from_shape_vec((s,s),
@@ -129,7 +156,7 @@ impl<T: RealField> ButcherTableu<T>
     }
 }
 
-impl<T: RealField> ButcherTableu<T>{
+impl<T> ButcherTableu<T>{
     pub fn num_stages(&self) -> usize{
         self.b.len()
     }
@@ -142,8 +169,16 @@ impl<T: RealField> ButcherTableu<T>{
         self.b.iter()
     }
 
+    pub fn b_sl(&self) -> &[T] {
+        self.b.as_slice().unwrap()
+    }
+
     pub fn b_err_iter(&self) -> Option<ndarray::iter::Iter<T, Ix1>>{
         self.b_err.as_ref().map(|b| b.iter())
+    }
+
+    pub fn b_err_sl(&self) -> Option<&[T]>{
+        self.b_err.as_ref().map(|b| b.as_slice().unwrap())
     }
 }
 
@@ -161,19 +196,23 @@ impl<T: RealField> ButcherTableu<T>{
 /// vectors do not have a compile time dimension, and so cannot implement Zero, Module, VectorSpace...
 /// at compile time. Thus, the only required traits for V are Clone, AddAssign with &V, and MulAssign
 /// with S
-fn rk_step<Fun, S, T, V>(
+fn rk_step<Fun, S, T, V, LC>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, x_err: Option<&mut V>,
-    dt: T, tabl: &ButcherTableu<T>,  K: &mut Vec<V>, _phantom: PhantomData<S>)
+    dt: T, tabl: &ButcherTableu<T>,  K: &mut Vec<V>,
+    _lc: &LC,
+    //_phantom: PhantomData<S>
+)
         -> Result<(), ODEError>
     where T: RealField + Into<S>,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-          S: Ring + Copy,
-          for <'b> V: AddAssign<&'b V>,
-          V: Clone + MulAssign<S>
+          S: Copy , //Ring + Copy,
+          //for <'b> V: AddAssign<&'b V>,
+          //V: Clone ,//+ MulAssign<S>,
+          LC: LinearCombination<S, V>
     {
 
     let _dt : S = dt.into();
-    let _zero =  <S as Zero>::zero();
+    //let _zero =  <S as Zero>::zero();
     //Check that the number of stages is consistent
     let k_len = K.len();
     let s = k_len - 1;
@@ -182,41 +221,49 @@ fn rk_step<Fun, S, T, V>(
     }
 
     //Calculate the first stage
-    f(t, x0, K.get_mut(0).unwrap());
+    f(t, x0, K.get_mut(0).unwrap()).unwrap();
 
     //Split the K vector into the stages vector and the entry used as an arithmetic register
     let (k_stages, k_work) = K.split_at_mut(s);
-    let k = k_work.get_mut(0).unwrap();
+    let _k = k_work.get_mut(0).unwrap();
 
     //Iterate over the tableu, skipping the first trivial entry
     for (i, ac) in tabl.ac_iter().into_iter().enumerate().skip(1){
         let ti: T = t + (ac[i]) * dt;
         // Calculate x for the current stage and store in xf
-        *xf *= _zero;
-        for j in 0..i{
-            //*k *= _zero;
-            //*k += k_stages.get(j).unwrap();
-            k.clone_from(k_stages.get(j).unwrap());
-            *k *= ac[j].into();
-            *xf += &*k;
-        }
-        *xf *= _dt;
-        *xf += x0;
+        //LC::linear_combination(xf, k_stages, ac.as_slice().unwrap());
+        LC::linear_combination_iter(xf, k_stages.iter().take(i),
+        ac.iter().take(i)).unwrap();
+        // *xf *= _zero;
+        // for j in 0..i{
+        //     //*k *= _zero;
+        //     //*k += k_stages.get(j).unwrap();
+        //     k.clone_from(k_stages.get(j).unwrap());
+        //     *k *= ac[j].into();
+        //     *xf += &*k;
+        // }
+        LC::scale(xf, _dt);
+        //*xf *= _dt;
+        LC::add_assign_ref(xf, x0);
+        //*xf += x0;
         let ki = k_stages.get_mut(i).unwrap();
         //Evaluate dx for this stage and store in ki
-        f(ti, xf, ki);
+        f(ti, xf, ki).unwrap();
     };
 
     //Finally calculate xf
-    *xf *= _zero;
-    for (b, ki) in tabl.b_iter()
-        .zip(k_stages.iter() ){
-        k.clone_from(ki);
-        *k *= (*b).into();
-        *xf += &*k;
-    }
-    *xf *= _dt;
-    *xf += x0;
+    LC::linear_combination(xf, &*k_stages, tabl.b_sl());
+    // *xf *= _zero;
+    // for (b, ki) in tabl.b_iter()
+    //     .zip(k_stages.iter() ){
+    //     k.clone_from(ki);
+    //     *k *= (*b).into();
+    //     *xf += &*k;
+    // }
+    LC::scale(xf, _dt);
+    //*xf *= _dt;
+    LC::add_assign_ref(xf, x0);
+    //*xf += x0;
 
     //Also handle x_err if the butcher tableu contains error terms
     match tabl.b_err_iter(){
@@ -225,16 +272,22 @@ fn rk_step<Fun, S, T, V>(
             match x_err{
                 None => {},
                 Some(xe) =>{
-                    *xf *= _zero;
-
-                    for (b, ki) in e
-                            .zip(k_stages.iter()){
-                        k.clone_from(ki);
-                        *k *=  (*b).into();
-                        *xf += &*k;
-                    }
-                    *xf *= _dt;
-                    *xf += x0;
+                    std::mem::swap(xe, xf);
+                    LC::linear_combination_iter(xf, k_stages.iter(), e)
+                        .expect("linear_combination_iter error");
+                    // *xf *= _zero;
+                    //
+                    // for (b, ki) in e
+                    //         .zip(k_stages.iter()){
+                    //     k.clone_from(ki);
+                    //     *k *=  (*b).into();
+                    //     *xf += &*k;
+                    // }
+                    LC::scale(xf, _dt);
+                    //*xf *= _dt;
+                    LC::add_assign_ref(xf, x0);
+                    //*xf += x0;
+                    LC::delta(xe, &*xf);
                 }
             }
         }
@@ -245,11 +298,12 @@ fn rk_step<Fun, S, T, V>(
 }
 
 
-pub struct RK45Solver<V,Fun,S,T=f64>
+pub struct RK45Solver<V,Fun,S,LC=RK45SolverDefaultLC,T=f64>
     where   T: RealField,
             Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
             S : Copy,
             V: Clone,
+            LC: LinearCombination<S, V>
 {
     f: Fun,
     dat: ODEData<T, V>,
@@ -257,33 +311,79 @@ pub struct RK45Solver<V,Fun,S,T=f64>
     x_err: Option<V>,
     tabl: ButcherTableu<T>,
     K: Vec<V>,
+    lc: LC,
     _phantom: PhantomData<S>
 }
 
-pub type RK45RealSolver<V, Fun, T> = RK45Solver<V, Fun, T, T>;
-pub type RK45ComplexSolver<V, Fun, T> = RK45Solver<V, Fun, Complex<T>, T>;
+#[derive(Copy, Clone, Default)]
+pub struct RK45SolverDefaultLC;
 
-impl<'a,V,S,Fun,T> RK45Solver<V,Fun,S, T>
+impl<S: Copy, V> LinearCombination<S, V> for RK45SolverDefaultLC
+where V: AddAssign<V> + MulAssign<S>,
+      for <'b> &'b V: Mul<S, Output=V>,
+      for <'b> V: AddAssign<&'b V> + SubAssign<&'b V>
+{
+    fn scale(v: &mut V, k: S) {
+        *v *= k;
+    }
+
+    fn scalar_multiply_to(v: &V, k: S, target: &mut V) {
+        *target = v * k;
+    }
+
+    fn add_scalar_mul(v: &mut V, k: S, other: &V) {
+        *v += other * k;
+    }
+
+    fn add_assign_ref(v: &mut V, other: &V) {
+        *v += other;
+    }
+
+    fn delta(v: &mut V, y: &V) {
+        *v -= y;
+    }
+}
+
+impl<R: RealField> Normed<R, R> for RK45SolverDefaultLC
+{
+    fn norm(v: &R) -> R {
+        v.abs()
+    }
+}impl<R: RealField+Float> Normed<R, Complex<R>> for RK45SolverDefaultLC
+{
+    fn norm(v: &Complex<R>) -> R {
+        Complex::norm(v)
+    }
+}
+
+
+pub type RK45RealSolver<V, Fun, T> = RK45Solver<V, Fun, T, RK45SolverDefaultLC, T>;
+pub type RK45ComplexSolver<V, Fun, T> = RK45Solver<V, Fun, Complex<T>, RK45SolverDefaultLC, T>;
+
+impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,LC,T>
     where
         Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
         V: Clone + MulAssign<S>,
-        S: Ring + From<T> + Copy,
-        T: RealField,{
+        S: From<T> + Copy,
+        T: RealField,
+        LC: LinearCombination<S, V> + Default
+{
 
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T ) -> Self{
-
-        let x_err = Some(x0.clone());
-        let ac = rk45_ac.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
-        let b = rk45_b.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
-        let b_err = rk45_berr.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
-
-        let tabl = ButcherTableu::from_vecs(ac, b, Some(b_err), 6);
-        let mut K: Vec<V> = Vec::new();
-        K.resize(7, x0.clone());
-        let dat = ODEData::new(t0, tf, x0.clone(), h);
-        let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
-            x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
-        RK45Solver{f, dat, adaptive_dat, x_err,  tabl, K, _phantom: PhantomData}
+        Self::new_with_lc(f, t0, tf, x0, h, Default::default())
+        // let x_err = Some(x0.clone());
+        // let ac = rk45_ac.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        // let b = rk45_b.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        // let b_err = RK45_BERR.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        //
+        // let tabl = ButcherTableu::from_vecs(ac, b, Some(b_err), 6);
+        // let mut K: Vec<V> = Vec::new();
+        // K.resize(7, x0.clone());
+        // let dat = ODEData::new(t0, tf, x0.clone(), h);
+        // let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
+        //     x0, T::from_f64(3.0).unwrap()).with_alpha(
+        //                T::from_f64(0.9).unwrap());
+        // RK45Solver{f, dat, adaptive_dat, x_err,  tabl, K, lc: Default::default(), _phantom: PhantomData}
     }
 
     pub fn no_adaptive(self) -> Self{
@@ -293,12 +393,40 @@ impl<'a,V,S,Fun,T> RK45Solver<V,Fun,S, T>
     }
 }
 
-impl<V,Fun,S,T> ODESolverBase for RK45Solver<V,Fun,S,T>
+impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,LC,T>
+    where
+        Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
+        V: Clone + MulAssign<S>,
+        S: From<T> + Copy,
+        T: RealField,
+        LC: LinearCombination<S, V>
+{
+    pub fn new_with_lc(f: Fun, t0: T, tf: T, x0: V, h: T, lc: LC) -> Self{
+        let x_err = Some(x0.clone());
+        let ac = RK45_AC.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        let b = RK45_B.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+        let b_err = RK45_BERR.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
+
+        let tabl = ButcherTableu::from_vecs(ac, b, Some(b_err), 6);
+        let mut K: Vec<V> = Vec::new();
+        K.resize(7, x0.clone());
+        let dat = ODEData::new(t0, tf, x0.clone(), h);
+        let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
+            x0, T::from_f64(3.0).unwrap()).with_alpha(
+            T::from_f64(0.9).unwrap());
+        RK45Solver{f, dat, adaptive_dat, x_err,  tabl, K, lc, _phantom: PhantomData}
+    }
+
+
+}
+
+impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,LC,T>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           for <'b> V: AddAssign<&'b V>,
           V: Clone + MulAssign<S>,
-          S: Ring + From<T> + Copy{
+          S: From<T> + Copy,
+          LC: LinearCombination<S, V> {
     type TField=T;
     type RangeType=V;
 
@@ -321,28 +449,29 @@ impl<V,Fun,S,T> ODESolverBase for RK45Solver<V,Fun,S,T>
 //        dat.next_dt = dt;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, self.x_err.as_mut(),
-                          dt, &self.tabl, &mut self.K,
-                          PhantomData::<S>);
+                          dt, &self.tabl, &mut self.K, &self.lc);
         res
     }
 
 }
-impl<V,Fun,S,T> ODESolver for RK45Solver<V,Fun,S,T>
+impl<V,Fun,S,LC,T> ODESolver for RK45Solver<V,Fun,S,LC,T>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           for <'b> V: AddAssign<&'b V>,
           V: Clone + MulAssign<S>,
-          S: Ring + From<T> + Copy
+          S: From<T> + Copy,
+          LC: LinearCombination<S, V>
 {
 
 }
 
-impl<V,Fun,S,T> AdaptiveODESolver<T> for RK45Solver<V, Fun, S, T>
+impl<V,Fun,S,LC,T> AdaptiveODESolver<T> for RK45Solver<V, Fun, S,LC, T>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           for <'b> V: AddAssign<&'b V>,
           V: Clone + MulAssign<S>,
-          S: Ring + From<T> + Copy
+          S: From<T> + Copy,
+          LC: LinearCombination<S, V> + Normed<T, V>
 {
     fn ode_adapt_data(&self) -> &ODEAdaptiveData<T, Self::RangeType> {
         &self.adaptive_dat
@@ -353,7 +482,8 @@ impl<V,Fun,S,T> AdaptiveODESolver<T> for RK45Solver<V, Fun, S, T>
     }
 
     fn norm(&mut self) -> Self::TField {
-        unimplemented!()
+        //let dat = self.ode_adapt_data();
+        self.x_err.as_ref().map_or(T::zero(),|dx| LC::norm(dx))
     }
 
     fn validate_adaptive(&self) -> Result<(), ()> {
@@ -361,50 +491,50 @@ impl<V,Fun,S,T> AdaptiveODESolver<T> for RK45Solver<V, Fun, S, T>
     }
 }
 
-pub struct RK45AdaptiveSolver<V,Fun,S,T=f64>
-    where   T: RealField,
-            Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-            for <'b> V: AddAssign<&'b V>,
-            V: Clone ,
-            S : From<T>+Copy
-{
-    f: Fun,
-    dat: ODEData<T, V>,
-    x_err: V,
-    h: T,
-    tabl: ButcherTableu<T>,
-    K: Vec<V>,
-    _phantom: PhantomData<S>
-}
-
-impl<V,Fun,S> RK45AdaptiveSolver<V,Fun,S,f64>
-    where
-        Fun: FnMut(f64, &V, &mut V) -> Result<(),()>,
-        for <'b> V: AddAssign<&'b V>,
-        V: Clone + MulAssign<S>,
-        S: From<f64>+Copy{
-
-    pub fn new(f: Fun, t0: f64, tf: f64, x0: V) -> Self{
-        let h = (tf - t0) * 1.0e-5;
-        let atol = 1.0e-6;
-        let rtol = 1.0e-6;
-
-        let x_err = x0.clone();
-        let tabl = ButcherTableu::from_slices(&rk45_ac, &rk45_b, Some(&rk45_berr), 6);
-        let mut K: Vec<V> = Vec::new();
-        K.resize(7, x0.clone());
-        let dat = ODEData::new(t0, tf, x0, h);
-        RK45AdaptiveSolver{f, dat, x_err, h, tabl, K, _phantom: PhantomData}
-    }
-
-    pub fn with_tolerance(atol: f64, rtol: f64){
-
-    }
-
-    pub fn with_init_step(h: f64){
-
-    }
-}
+// pub struct RK45AdaptiveSolver<V,Fun,S,T=f64>
+//     where   T: RealField,
+//             Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
+//             for <'b> V: AddAssign<&'b V>,
+//             V: Clone ,
+//             S : From<T>+Copy
+// {
+//     f: Fun,
+//     dat: ODEData<T, V>,
+//     x_err: V,
+//     h: T,
+//     tabl: ButcherTableu<T>,
+//     K: Vec<V>,
+//     _phantom: PhantomData<S>
+// }
+//
+// impl<V,Fun,S> RK45AdaptiveSolver<V,Fun,S,f64>
+//     where
+//         Fun: FnMut(f64, &V, &mut V) -> Result<(),()>,
+//         for <'b> V: AddAssign<&'b V>,
+//         V: Clone + MulAssign<S>,
+//         S: From<f64>+Copy{
+//
+//     pub fn new(f: Fun, t0: f64, tf: f64, x0: V) -> Self{
+//         let h = (tf - t0) * 1.0e-5;
+//         let atol = 1.0e-6;
+//         let rtol = 1.0e-6;
+//
+//         let x_err = x0.clone();
+//         let tabl = ButcherTableu::from_slices(&rk45_ac, &rk45_b, Some(&RK45_BERR), 6);
+//         let mut K: Vec<V> = Vec::new();
+//         K.resize(7, x0.clone());
+//         let dat = ODEData::new(t0, tf, x0, h);
+//         RK45AdaptiveSolver{f, dat, x_err, h, tabl, K, _phantom: PhantomData}
+//     }
+//
+//     pub fn with_tolerance(atol: f64, rtol: f64){
+//
+//     }
+//
+//     pub fn with_init_step(h: f64){
+//
+//     }
+// }
 
 
 #[cfg(test)]
@@ -412,6 +542,7 @@ mod tests{
     use super::*;
     use nalgebra::{Vector2, DVector};
     use num_complex::Complex64 as c64;
+    use crate::ODEState;
 
     #[test]
     fn test_rk45_1(){
@@ -459,8 +590,9 @@ mod tests{
             Ok(())
         };
         let x0 :f64 = 1.0;
-        let mut solver = RK45RealSolver::new(g, 0., 2., x0, 0.0001);
-        while let ODEState::Ok(_) = solver.step() {
+        let mut solver = RK45RealSolver::new(g, 0., 2., x0, 0.0001)
+            .with_tolerance(1.0e-10, 1.0e-10);
+        while let ODEState::Ok(_) = solver.step_adaptive() {
 
         }
         let (tf, xf) = solver.current();

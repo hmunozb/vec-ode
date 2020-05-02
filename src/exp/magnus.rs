@@ -1,9 +1,10 @@
-use alga::general::{Ring, SupersetOf, RealField};
+use crate::RealField;
 use std::ops::{MulAssign, AddAssign, SubAssign};
 use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState, LinearCombination, AdaptiveODESolver, ODEAdaptiveData};
 use std::marker::PhantomData;
-use num_traits::Float;
+
 use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
+use crate::from_f64;
 
 fn midpoint<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T, sp: &mut Sp) -> Result<(), ODEError>
@@ -11,10 +12,10 @@ where   Fun: FnMut(T) -> Sp::L,
         Sp : ExponentialSplit<T, S, V>,
         //Sp::L : LinearCombinationSpace<S>,
         T: RealField,
-        S: Ring + Copy + From<T>,
+        S: Copy + From<T>,
         V: Clone
 {
-    let t_mid = t + dt * T::from_subset(&0.5);
+    let t_mid = t + dt * from_f64!(T, 0.5);
     let mut l = (*f)(t_mid);
     Sp::LC::scale(&mut l, S::from(dt));
     let u = sp.exp(l);
@@ -33,21 +34,21 @@ fn magnus_42<Fun, T, S, V, Sp>(
             + MulAssign<S>
                 + for <'b> AddAssign<&'b Sp::L>,
             T: RealField,
-            S: Ring + Copy + From<T>,
+            S: Copy + From<T>,
             V: Clone + for <'b> SubAssign<&'b V>
 {
 
-    let c_mid = T::from_subset(&0.288675134594812882254574390251);
-    let b1 : T = dt * T::from_subset(&0.5);
+    let c_mid = from_f64!(T, 0.288675134594812882254574390251);
+    let b1 : T = dt * from_f64!(T, 0.5);
     let b2_flt = -0.144337567297406441127287195125;
-    let b2: T = dt * dt * T::from_subset(&b2_flt);
+    let b2: T = dt * dt * from_f64!(T, b2_flt);
 
     let mid_t : T = t + b1;
     let t_sl = [   mid_t - c_mid*dt,
                             //mid_t,
                             mid_t + c_mid*dt];
 
-    let mut l_vec = (*f)(&t_sl);
+    let l_vec = (*f)(&t_sl);
 
     // ME 2
     let mut w2 : Sp::L= sp.commutator(&l_vec[0], &l_vec[1]);
@@ -85,7 +86,7 @@ where   Fun: FnMut(T) -> Sp::L,
         Sp : ExponentialSplit<T, S, V>,
         Sp::L : MulAssign<S>,
         T: RealField,
-        S: Ring + Copy + From<T>,
+        S: Copy + From<T>,
         V: Clone
 {
     f: Fun,
@@ -100,7 +101,7 @@ impl<Sp, Fun, S, V, T> MidpointExpLinearSolver<Sp, Fun, S, V, T>
                 Sp : ExponentialSplit<T, S, V>,
                 Sp::L : MulAssign<S>,
                 T: RealField,
-                S: Ring + Copy + From<T>,
+                S: Copy + From<T>,
                 V: Clone
 {
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T, sp: Sp) -> Self{
@@ -117,7 +118,7 @@ where       Fun: FnMut(T) -> Sp::L,
             Sp : ExponentialSplit<T, S, V>,
             Sp::L : MulAssign<S>,
             T: RealField,
-            S: Ring + Copy + From<T>,
+            S: Copy + From<T>,
             V: Clone
 {
     type TField = T;
@@ -150,7 +151,7 @@ where  Fun: FnMut(T) -> Sp::L,
        Sp : ExponentialSplit<T, S, V>,
        Sp::L : MulAssign<S>,
        T: RealField,
-       S: Ring + Copy + From<T>,
+       S: Copy + From<T>,
        V: Clone
 {
 
@@ -162,7 +163,7 @@ pub struct MagnusExpLinearSolver<Sp, Fun, S, V, T>
             Sp : Commutator<T, S, V> + NormedExponentialSplit<T, S, V>,
             Sp::L : MulAssign<S>,
             T: RealField,
-            S: Ring + Copy + From<T>,
+            S: Copy + From<T>,
             V: Clone
 {
     f: Fun,
@@ -182,19 +183,19 @@ impl<Sp, Fun, S, V, T> MagnusExpLinearSolver<Sp, Fun, S, V, T>
                 Sp : Commutator<T, S, V> + NormedExponentialSplit<T, S, V>,
                 Sp::L : MulAssign<S>,
                 T: RealField,
-                S: Ring + Copy + From<T>,
+                S: Copy + From<T>,
                 V: Clone
 {
     pub fn new(f: Fun, t0: T, tf: T, x0: V, sp: Sp) -> Self{
         let x_err = Some(x0.clone());
-        let h = T::from_subset(&1.0e-3);
+        let h = from_f64!(T, 1.0e-3);
         let dat = ODEData::new(t0, tf, x0.clone(), h);
         let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
-        x0, T::from_subset(&3.0)).with_alpha(T::from_subset(&0.9));
-        let dt_range = (T::from_subset(&1.0e-6), T::from_subset(&1.0));
-        let atol = T::from_subset(&1.0e-6);
-        let rtol = T::from_subset(&1.0e-6);
-        f64::epsilon();
+        x0, from_f64!(T, 3.0)).with_alpha(from_f64!(T, 0.9));
+        // let dt_range = (from_f64!(T, 1.0e-6), from_f64!(T, 1.0));
+        // let atol = from_f64!(T, 1.0e-6);
+        // let rtol = from_f64!(T, 1.0e-6);
+        //f64::epsilon();
         Self{f, sp, dat, adaptive_dat, x_err, _phantom: PhantomData}
     }
 
@@ -232,7 +233,7 @@ impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
                 Sp::L : MulAssign<S>
                     + for <'b> AddAssign<&'b Sp::L>,
                 T: RealField,
-                S: Ring + Copy + From<T>,
+                S: Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>
 {
     type TField = T;
@@ -272,7 +273,7 @@ impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
                 Sp::L : MulAssign<S>
                 + for <'b> AddAssign<&'b Sp::L>,
                 T: RealField,
-                S: Ring + Copy + From<T>,
+                S: Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>
 {
     // fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
@@ -283,9 +284,9 @@ impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
     //     if let ODEStep::Step(_) = step.clone(){
     //         self.err = self.sp.norm(&self.x_err);
     //         let f = self.rtol / self.err;
-    //         //let new_h = T::from_subset(&0.9) * T::powf(f, T::from_subset(&(1.0/3.0))) * self.dat.h;
-    //         let fp_lim =T::min( T::max(ad.step_size_mul(f) , T::from_subset(&0.3) ),
-    //                             T::from_subset(&2.0));
+    //         //let new_h = from_f64!(T, 0.9) * T::powf(f, from_f64!(T, (1.0/3.0))) * self.dat.h;
+    //         let fp_lim =T::min( T::max(ad.step_size_mul(f) , from_f64!(T, 0.3) ),
+    //                             from_f64!(T, 2.0));
     //         let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
     //         self.dat.update_step_size(new_h);
     //
@@ -304,7 +305,7 @@ impl<Sp, Fun, S, V, T> AdaptiveODESolver<T> for MagnusExpLinearSolver<Sp, Fun, S
                 Sp::L : MulAssign<S>
                 + for <'b> AddAssign<&'b Sp::L>,
                 T: RealField,
-                S: Ring + Copy + From<T>,
+                S: Copy + From<T>,
                 V: Clone + for <'b> SubAssign<&'b V>
 {
     fn ode_adapt_data(&self) -> &ODEAdaptiveData<T, V> {

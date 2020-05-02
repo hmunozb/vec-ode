@@ -1,8 +1,8 @@
-use alga::general::{RealField, ClosedAdd, ClosedMul, ClosedSub};
-use nalgebra::{Scalar,Dim, Matrix, DMatrix};
-use num_complex::Complex;
-use num_traits::Float;
-use std::ops::{Add, Mul};
+use alga::general::{ClosedAdd, ClosedMul, ClosedSub};
+use nalgebra::{Scalar,Dim, Matrix};
+
+
+
 
 use crate::{LinearCombinationSpace};
 use nalgebra::base::storage::StorageMut;
