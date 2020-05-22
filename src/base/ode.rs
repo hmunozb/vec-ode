@@ -3,14 +3,14 @@ use crate::RealField;
 
 use num_traits::{FromPrimitive};
 use std::mem::swap;
-
+use std::fmt;
 use crate::from_f64;
 
 pub trait Normed<R: Copy, V> {
     fn norm(v: &V) -> R;
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ODEError{
     pub msg: String
 }
@@ -20,6 +20,14 @@ impl ODEError{
         Self{msg: String::from(s)}
     }
 }
+
+impl fmt::Display for ODEError{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.msg)
+    }
+}
+
+impl std::error::Error for ODEError{ }
 
 /// Marks the state of the ODE
 #[derive(Clone)]
