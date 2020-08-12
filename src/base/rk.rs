@@ -197,7 +197,7 @@ impl<T> ButcherTableu<T>{
 /// at compile time. Thus, the only required traits for V are Clone, AddAssign with &V, and MulAssign
 /// with S
 fn rk_step<Fun, S, T, V, LC>(
-    f: &mut Fun, t: T, x0: &V, xf: &mut V, x_err: Option<&mut V>,
+    mut f: Fun, t: T, x0: &V, xf: &mut V, x_err: Option<&mut V>,
     dt: T, tabl: &ButcherTableu<T>,  K: &mut Vec<V>,
     _lc: &LC,
     //_phantom: PhantomData<S>
