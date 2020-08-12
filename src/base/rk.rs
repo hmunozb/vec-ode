@@ -432,14 +432,16 @@ impl<V,Fun,S,T,LC> AdaptiveODESolver<T> for RK45Solver<V, Fun, S,T,LC>
 
 #[cfg(test)]
 mod tests{
-    use super::*;
+    //use super::*;
+    use super::{ODESolverBase, ODESolver, AdaptiveODESolver};
+    use super::{RK45ComplexSolver, RK45RealSolver};
     use nalgebra::{Vector2, DVector};
     use num_complex::Complex64 as c64;
     use crate::ODEState;
 
     #[test]
     fn test_rk45_1(){
-        let g = |t: f64, x: & Vector2<c64>,  y: &mut Vector2<c64>|{
+        let g = |_t: f64, x: & Vector2<c64>,  y: &mut Vector2<c64>|{
             y[0] = - x[0];
             y[1] =  x[1] * -2.0;
             Ok(())
@@ -459,7 +461,7 @@ mod tests{
 
     #[test]
     fn test_rk45_2(){
-        let g = |t: f64, x: & DVector<f64>,  y: &mut DVector<f64>|{
+        let g = |_t: f64, x: & DVector<f64>,  y: &mut DVector<f64>|{
             y[0] = - x[0];
             y[1] = -2.0 * x[1];
             Ok(())
@@ -478,7 +480,7 @@ mod tests{
 
     #[test]
     fn test_rk45_f64(){
-        let g = |t: f64, x: & f64,  y: &mut f64|{
+        let g = |_t: f64, x: & f64,  y: &mut f64|{
             *y = - *x;
             Ok(())
         };
