@@ -39,7 +39,6 @@ pub trait LinearCombination<S: Copy, V>  {
         Self::scalar_multiply_to(&v0[0], k0[0].clone().into(), v);
         for (vi, &k) in v_arr.iter().zip(k_arr.iter()){
             Self::add_scalar_mul(v, k.into(), vi);
-            //v.add_scalar_mul(k.clone(), vi);
         }
     }
 
@@ -118,9 +117,6 @@ where V: LinearCombinationSpace<S>{
         v.delta(y);
     }
 
-    // fn linear_combination<S2: Copy + Into<S>>(v: &mut V, v_arr: &[V], k_arr: &[S2]){
-    //     v.linear_combination(v_arr, k_arr)
-    // }
 }
 
 
@@ -192,27 +188,19 @@ impl<T> ButcherTableu<T>{
 ///             is used for working arithmetic (will be unnecessary with add_scalar_multiple
 ///             available as an operation)
 ///
-/// The scalar field S needs to be hacked in via PhantomData because dynamically allocated
-/// vectors do not have a compile time dimension, and so cannot implement Zero, Module, VectorSpace...
-/// at compile time. Thus, the only required traits for V are Clone, AddAssign with &V, and MulAssign
-/// with S
 fn rk_step<Fun, S, T, V, LC>(
     mut f: Fun, t: T, x0: &V, xf: &mut V, x_err: Option<&mut V>,
     dt: T, tabl: &ButcherTableu<T>,  K: &mut Vec<V>,
     _lc: &LC,
-    //_phantom: PhantomData<S>
 )
         -> Result<(), ODEError>
     where T: RealField + Into<S>,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-          S: Copy , //Ring + Copy,
-          //for <'b> V: AddAssign<&'b V>,
-          //V: Clone ,//+ MulAssign<S>,
+          S: Copy ,
           LC: LinearCombination<S, V>
     {
 
     let _dt : S = dt.into();
-    //let _zero =  <S as Zero>::zero();
     //Check that the number of stages is consistent
     let k_len = K.len();
     let s = k_len - 1;
@@ -231,21 +219,10 @@ fn rk_step<Fun, S, T, V, LC>(
     for (i, ac) in tabl.ac_iter().into_iter().enumerate().skip(1){
         let ti: T = t + (ac[i]) * dt;
         // Calculate x for the current stage and store in xf
-        //LC::linear_combination(xf, k_stages, ac.as_slice().unwrap());
         LC::linear_combination_iter(xf, k_stages.iter().take(i),
         ac.iter().take(i)).unwrap();
-        // *xf *= _zero;
-        // for j in 0..i{
-        //     //*k *= _zero;
-        //     //*k += k_stages.get(j).unwrap();
-        //     k.clone_from(k_stages.get(j).unwrap());
-        //     *k *= ac[j].into();
-        //     *xf += &*k;
-        // }
         LC::scale(xf, _dt);
-        //*xf *= _dt;
         LC::add_assign_ref(xf, x0);
-        //*xf += x0;
         let ki = k_stages.get_mut(i).unwrap();
         //Evaluate dx for this stage and store in ki
         f(ti, xf, ki).unwrap();
@@ -253,17 +230,8 @@ fn rk_step<Fun, S, T, V, LC>(
 
     //Finally calculate xf
     LC::linear_combination(xf, &*k_stages, tabl.b_sl());
-    // *xf *= _zero;
-    // for (b, ki) in tabl.b_iter()
-    //     .zip(k_stages.iter() ){
-    //     k.clone_from(ki);
-    //     *k *= (*b).into();
-    //     *xf += &*k;
-    // }
     LC::scale(xf, _dt);
-    //*xf *= _dt;
     LC::add_assign_ref(xf, x0);
-    //*xf += x0;
 
     //Also handle x_err if the butcher tableu contains error terms
     match tabl.b_err_iter(){
@@ -275,18 +243,8 @@ fn rk_step<Fun, S, T, V, LC>(
                     std::mem::swap(xe, xf);
                     LC::linear_combination_iter(xf, k_stages.iter(), e)
                         .expect("linear_combination_iter error");
-                    // *xf *= _zero;
-                    //
-                    // for (b, ki) in e
-                    //         .zip(k_stages.iter()){
-                    //     k.clone_from(ki);
-                    //     *k *=  (*b).into();
-                    //     *xf += &*k;
-                    // }
                     LC::scale(xf, _dt);
-                    //*xf *= _dt;
                     LC::add_assign_ref(xf, x0);
-                    //*xf += x0;
                     LC::delta(xe, &*xf);
                 }
             }
@@ -410,7 +368,6 @@ impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,T,LC>
 impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,T,LC>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-          for <'b> V: AddAssign<&'b V>,
           V: Clone,
           S: From<T> + Copy,
           LC: LinearCombination<S, V> {
@@ -427,13 +384,9 @@ impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,T,LC>
         self.dat
     }
 
-//    fn step_size(&self) -> ODEStep<T>{
-//        self.dat.step_size_of(self.dat.h)
-//    }
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
         let dat = &mut self.dat;
-//        dat.next_dt = dt;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, self.x_err.as_mut(),
                           dt, &self.tabl, &mut self.K, &self.lc);
@@ -444,8 +397,7 @@ impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,T,LC>
 impl<V,Fun,S,T,LC> ODESolver for RK45Solver<V,Fun,S,T,LC>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-          for <'b> V: AddAssign<&'b V>,
-          V: Clone + MulAssign<S>,
+          V: Clone,
           S: From<T> + Copy,
           LC: LinearCombination<S, V>
 {
@@ -455,8 +407,7 @@ impl<V,Fun,S,T,LC> ODESolver for RK45Solver<V,Fun,S,T,LC>
 impl<V,Fun,S,T,LC> AdaptiveODESolver<T> for RK45Solver<V, Fun, S,T,LC>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-          for <'b> V: AddAssign<&'b V>,
-          V: Clone + MulAssign<S>,
+          V: Clone,
           S: From<T> + Copy,
           LC: LinearCombination<S, V> + Normed<T, V>
 {
