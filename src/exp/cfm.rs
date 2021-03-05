@@ -195,9 +195,6 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S
                     self.alph_err.as_ref().map(|a|a.view()))
     }
 
-    fn reject_step(&mut self) -> ODEState<T>{
-        ODEState::Ok(ODEStep::Reject)
-    }
 }
 
 impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>

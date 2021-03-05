@@ -49,7 +49,7 @@ pub enum ODEStep<T:Clone+Copy>{
 
 impl<T> ODEStep<T>
 where T: Clone + Copy
-{
+{   /// Map an ODEError into ODEStep::Err
     pub fn map_dt<F>(self, mut f:  F)  -> ODEStep<T>
     where F: FnMut(T)-> Result<(), ODEError> {
         match self.clone(){
@@ -221,12 +221,6 @@ pub trait ODESolverBase: Sized{
     fn checkpoint(&mut self, end: bool){
         self.ode_data_mut().checkpoint_update(end);
     }
-    /// Handle a step rejection. Adaptive solvers should adjust their step size and continue
-    /// if possible. Rejection is an error for non-adaptive solvers
-    fn reject_step(&mut self) -> ODEState<Self::TField>{
-        let (t, _v) = self.current();
-        ODEState::Err(ODEError{msg: format!("Rejected step at time {}", t)})
-    }
 }
 
 pub trait ODESolver : ODESolverBase{
@@ -244,7 +238,7 @@ pub trait ODESolver : ODESolverBase{
     fn step(&mut self) -> ODEState<Self::TField>{
         let dt_opt = self.step_size();
         let res = self.handle_try_step(dt_opt);
-        apply_step(self, res)
+        apply_step(self, res, false)
     }
 
 }
@@ -332,7 +326,7 @@ pub trait AdaptiveODESolver<T: RealField>: ODESolver<TField=T>{
     fn step_adaptive(&mut self) -> ODEState<Self::TField>{
         let dt_opt = self.step_size();
         let res = self.handle_step_adaptive(dt_opt);
-        apply_step(self, res)
+        apply_step(self, res, true)
     }
 
 
@@ -394,7 +388,7 @@ pub fn check_step<T : RealField>(t0: T, tf: T, dt: T) -> Option<T>{
 }
 
 /// Return the state corresponding to the step taken by the solver
-pub fn apply_step<D: ODESolver>(d: &mut D, step: ODEStep<D::TField>) -> ODEState<D::TField>{
+pub fn apply_step<D: ODESolver>(d: &mut D, step: ODEStep<D::TField>, adaptive: bool) -> ODEState<D::TField>{
     match step.clone(){
         ODEStep::Step(_) =>{
             d.accept_step();
@@ -405,7 +399,12 @@ pub fn apply_step<D: ODESolver>(d: &mut D, step: ODEStep<D::TField>) -> ODEState
             ODEState::Ok(step)
         },
         ODEStep::Reject => {
-            d.reject_step()
+            if !adaptive{
+                 let (t, _v) = d.current();
+                 ODEState::Err(ODEError{msg: format!("Rejected step at time {}", t)})
+            } else{
+                ODEState::Ok(step)
+            }
         }
         ODEStep::End =>{
             d.checkpoint(true);

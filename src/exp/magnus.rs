@@ -262,9 +262,6 @@ impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
 
     }
 
-    fn reject_step(&mut self) -> ODEState<T>{
-        ODEState::Ok(ODEStep::Reject)
-    }
 }
 
 impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
