@@ -270,6 +270,7 @@ pub struct RK45Solver<V,Fun,S,T=f64, LC=RK45SolverDefaultLC>
     tabl: ButcherTableu<T>,
     K: Vec<V>,
     lc: LC,
+    pre_step_fn: Option<Box<dyn FnMut(&ODEData<T, V>)>>,
     _phantom: PhantomData<S>
 }
 
@@ -328,7 +329,7 @@ impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,T,LC>
 {
 
     pub fn new(f: Fun, t0: T, tf: T, x0: V, h: T ) -> Self{
-        Self::new_with_lc(f, t0, tf, x0, h, Default::default())
+        Self::new_with_lc(f, t0, tf, x0, h, Default::default(), None)
     }
 
     pub fn no_adaptive(self) -> Self{
@@ -346,7 +347,8 @@ impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,T,LC>
         T: RealField,
         LC: LinearCombination<S, V>
 {
-    pub fn new_with_lc(f: Fun, t0: T, tf: T, x0: V, h: T, lc: LC) -> Self{
+    pub fn new_with_lc(f: Fun, t0: T, tf: T, x0: V, h: T, lc: LC,
+                       pre_step_fn: Option<Box<dyn FnMut(&ODEData<T, V>)>>) -> Self{
         let x_err = Some(x0.clone());
         let ac = RK45_AC.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
         let b = RK45_B.iter().map(|&x| T::from_f64(x).unwrap()).collect_vec();
@@ -359,7 +361,7 @@ impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,T,LC>
         let adaptive_dat  = ODEAdaptiveData::new_with_defaults(
             x0, T::from_f64(3.0).unwrap()).with_alpha(
             T::from_f64(0.9).unwrap());
-        RK45Solver{f, dat, adaptive_dat, x_err,  tabl, K, lc, _phantom: PhantomData}
+        RK45Solver{f, dat, adaptive_dat, x_err,  tabl, K, lc, pre_step_fn, _phantom: PhantomData}
     }
 
 
@@ -386,6 +388,10 @@ impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,T,LC>
 
 
     fn try_step(&mut self, dt: T) -> Result<(), ODEError>{
+        let dat = &self.dat;
+        let opt_g = &mut self.pre_step_fn;
+        (opt_g.as_deref_mut()).map(|g| g(dat));
+
         let dat = &mut self.dat;
         let res = rk_step(&mut self.f, dat.t.clone(), &dat.x,
                           &mut dat.next_x, self.x_err.as_mut(),
