@@ -59,6 +59,20 @@ where T: Clone + Copy
             _ => self
         }
     }
+
+    pub fn unwrap_dt(&self) -> T{
+        match self{
+            ODEStep::Step(dt) => *dt,
+            _ => panic!("ODEStep::unwrap_dt expected Step(T) in enum")
+        }
+    }
+
+    pub fn unwrap_dt_or(&self, dt2 : T) -> T{
+        match self{
+            ODEStep::Step(dt) => *dt,
+            _ => dt2
+        }
+    }
 }
 
 /// Generic utility struct to group together ODE state variables
