@@ -1,4 +1,4 @@
-use alga::general::{ClosedAdd, ClosedMul, ClosedSub};
+use simba::scalar::{ClosedAdd, ClosedMul, ClosedSub};
 use ndarray::{ArrayBase, DataMut, Dimension, ScalarOperand};
 
 use crate::LinearCombinationSpace;

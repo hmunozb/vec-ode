@@ -9,6 +9,7 @@ mod dat;
 pub mod exp;
 pub mod impls;
 pub mod diff;
+mod quad;
 pub use base::*;
 use std::fmt::Display;
 use num_traits::{FromPrimitive, Num};

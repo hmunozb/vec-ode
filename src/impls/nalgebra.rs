@@ -1,4 +1,4 @@
-use alga::general::{ClosedAdd, ClosedMul, ClosedSub};
+use simba::scalar::{ClosedAdd, ClosedMul, ClosedSub};
 use nalgebra::{Scalar,Dim, Matrix};
 
 
@@ -8,7 +8,7 @@ use crate::{LinearCombinationSpace};
 use nalgebra::base::storage::StorageMut;
 
 impl<N, R, C, S, > LinearCombinationSpace<N> for Matrix<N, R, C, S>
-where N: Scalar + ClosedAdd + ClosedSub + ClosedMul,
+where N: Copy + Scalar + ClosedAdd + ClosedSub + ClosedMul,
       R: Dim, C: Dim, S: StorageMut<N, R, C>
 {
     fn scale(&mut self, k: N) {
@@ -17,7 +17,7 @@ where N: Scalar + ClosedAdd + ClosedSub + ClosedMul,
 
     fn scalar_multiply_to(&self, k: N, target: &mut Self) {
         for (s, t) in self.iter().zip(target.iter_mut()){
-            *t = *s * k;
+            *t = k * *s ;
         }
     }
 

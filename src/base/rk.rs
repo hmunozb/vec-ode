@@ -1,22 +1,19 @@
-
-use std::ops::{AddAssign, MulAssign, Mul, SubAssign};
-use itertools::Itertools;
-
-//use alga::general::{RealField, ClosedAdd};
-use crate::RealField;
-
-use ndarray::{Ix1, Array1, Array2};
-use super::ode::{ODESolver};
 use std::marker::PhantomData;
-use crate::{ODESolverBase, ODEData, ODEError, ODEAdaptiveData, AdaptiveODESolver};
-use crate::base::ode::Normed;
-use crate::dat::rk::{RK45_AC, RK45_B, RK45_BERR};
-use ndarray::iter::Lanes;
-use super::num_complex::Complex;
+use std::ops::{AddAssign, Mul, MulAssign, SubAssign};
 
+use itertools::Itertools;
 use itertools::zip_eq;
+use ndarray::{Array1, Array2, Ix1};
+use ndarray::iter::Lanes;
+use num_complex::Complex;
 use num_traits::Float;
 
+use crate::{AdaptiveODESolver, ODEAdaptiveData, ODEData, ODEError, ODESolverBase};
+use crate::base::ode::Normed;
+use crate::dat::rk::{RK45_AC, RK45_B, RK45_BERR};
+use crate::RealField;
+
+use super::ode::ODESolver;
 
 pub trait LinearCombination<S: Copy, V>  {
 
@@ -62,6 +59,9 @@ pub trait LinearCombination<S: Copy, V>  {
     }
 }
 
+pub trait NormedLinearCombination<T: Copy, S: Copy, V> : LinearCombination<S, V>{
+    fn norm(&self, x: &V) -> T;
+}
 
 
 pub trait LinearCombinationSpace<S>: Sized
@@ -310,7 +310,7 @@ impl<R: RealField> Normed<R, R> for RK45SolverDefaultLC
 }impl<R: RealField+Float> Normed<R, Complex<R>> for RK45SolverDefaultLC
 {
     fn norm(v: &Complex<R>) -> R {
-        Complex::norm(v)
+        v.norm()
     }
 }
 
@@ -432,12 +432,14 @@ impl<V,Fun,S,T,LC> AdaptiveODESolver<T> for RK45Solver<V, Fun, S,T,LC>
 
 #[cfg(test)]
 mod tests{
-    //use super::*;
-    use super::{ODESolverBase, ODESolver, AdaptiveODESolver};
-    use super::{RK45ComplexSolver, RK45RealSolver};
-    use nalgebra::{Vector2, DVector};
+    use nalgebra::{DVector, Vector2};
     use num_complex::Complex64 as c64;
+
     use crate::ODEState;
+
+    //use super::*;
+    use super::{AdaptiveODESolver, ODESolver, ODESolverBase};
+    use super::{RK45ComplexSolver, RK45RealSolver};
 
     #[test]
     fn test_rk45_1(){

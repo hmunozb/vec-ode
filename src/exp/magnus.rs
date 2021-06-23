@@ -1,10 +1,10 @@
-use crate::RealField;
-use std::ops::{MulAssign, AddAssign, SubAssign};
-use crate::{ODEData, ODESolverBase, ODEStep, ODEError, ODESolver, ODEState, LinearCombination, AdaptiveODESolver, ODEAdaptiveData};
 use std::marker::PhantomData;
+use std::ops::{AddAssign, MulAssign, SubAssign};
 
-use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
+use crate::{AdaptiveODESolver, LinearCombination, ODEAdaptiveData, ODEData, ODEError, ODESolver, ODESolverBase, ODEState, ODEStep};
+use crate::exp::{Commutator, ExponentialSplit, NormedExponentialSplit};
 use crate::from_f64;
+use crate::RealField;
 
 fn midpoint<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T, sp: &mut Sp) -> Result<(), ODEError>

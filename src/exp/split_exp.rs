@@ -1,21 +1,19 @@
-
-use std::ops::{MulAssign};
-use crate::{RealField, from_c64};
-//use alga::general::{SubsetOf};
-use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
-use crate::exp::cfm::cfm_exp;
-use crate::base::{ODESolver};
-use crate::{ODEData, ODESolverBase, ODEError};
-use crate::base::LinearCombinationSpace;
 use std::marker::PhantomData;
-//use nalgebra::{Scalar};
-use ndarray::{ ArrayView2};
+use std::ops::MulAssign;
+
 use itertools::Itertools;
+use ndarray::ArrayView2;
 use num_complex::Complex;
 
-use crate::LinearCombination;
+use crate::{from_c64, RealField};
+use crate::{ODEData, ODEError, ODESolverBase};
+use crate::base::ODESolver;
+use crate::base::LinearCombinationSpace;
+//use alga::general::{SubsetOf};
+use crate::exp::{Commutator, ExponentialSplit, NormedExponentialSplit};
+use crate::exp::cfm::cfm_exp;
 use crate::from_f64;
-
+use crate::LinearCombination;
 
 /// Defines an exponential split exp(A+B), where A and B are known to be
 /// commutative operator, and performs an exponential action exp(A) exp(B)

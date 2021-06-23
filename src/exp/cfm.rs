@@ -1,17 +1,17 @@
-use crate::RealField;
-use ndarray::{ArrayView1, ArrayView2, Array2};
-
-use crate::base::{LinearCombination, ODEData, ODEStep, ODEState,
-                  ODESolverBase, ODEError, ODEAdaptiveData};
-use crate::exp::{ExponentialSplit};
+use std::mem::swap;
+use std::ops::SubAssign;
 
 use itertools::Itertools;
-use std::mem::swap;
-use crate::dat::cfqm::{CFM_R4_J2_GL, CFM_R2_J1_GL};
+use ndarray::{Array2, ArrayView1, ArrayView2};
+
+use crate::{AdaptiveODESolver, ODESolver};
+use crate::base::{LinearCombination, ODEAdaptiveData, ODEData, ODEError,
+                  ODESolverBase, ODEState, ODEStep};
+use crate::dat::cfqm::{CFM_R2_J1_GL, CFM_R4_J2_GL};
 use crate::dat::quad::C_GAUSS_LEGENDRE_4;
-use std::ops::SubAssign;
-use crate::{ODESolver, AdaptiveODESolver};
+use crate::exp::ExponentialSplit;
 use crate::from_f64;
+use crate::RealField;
 
 ///
 /// Evaluates the linear combination of operators k := a.m dt
