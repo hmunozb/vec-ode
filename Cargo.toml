@@ -14,7 +14,3 @@ nalgebra = { version="0.27", optional=true }
 ndarray = { version="0.15" }
 num-complex = "0.4"
 simba = "0.5"
-
-[patch.crates-io]
-#alga = { git = "https://github.com/hmunozb/alga", branch = "morphisms" }
-#nalgebra = {git = "https://github.com/hmunozb/nalgebra", branch = "dmatrix-vec-space"}
