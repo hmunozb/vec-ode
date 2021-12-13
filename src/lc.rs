@@ -54,6 +54,9 @@ pub trait LinearCombination<S: Copy, V>  {
     }
 }
 
+pub trait NormedLinearCombination<T: Copy, S: Copy, V> : LinearCombination<S, V>{
+    fn norm(&self, x: &V) -> T;
+}
 
 /// Equivalent to LinearCombination
 /// but implemented on the vector space type V

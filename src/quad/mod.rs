@@ -1,4 +1,4 @@
-use crate::base::NormedLinearCombination;
+use crate::lc::NormedLinearCombination;
 
 pub fn trapezoid(){
 
