@@ -1,17 +1,17 @@
-use std::mem::swap;
-use std::ops::SubAssign;
+use crate::RealField;
+use ndarray::{ArrayView1, ArrayView2, Array2};
+
+use crate::lc::LinearCombination;
+use crate::base::{ODEData, ODEStep, ODEState, ODEError, ODEAdaptiveData};
+use crate::exp::{ExponentialSplit};
 
 use itertools::Itertools;
-use ndarray::{Array2, ArrayView1, ArrayView2};
-
-use crate::{AdaptiveODESolver, ODESolver};
-use crate::base::{LinearCombination, ODEAdaptiveData, ODEData, ODEError,
-                  ODESolverBase, ODEState, ODEStep};
-use crate::dat::cfqm::{CFM_R2_J1_GL, CFM_R4_J2_GL};
+use std::mem::swap;
+use crate::dat::cfqm::{CFM_R4_J2_GL, CFM_R2_J1_GL};
 use crate::dat::quad::C_GAUSS_LEGENDRE_4;
-use crate::exp::ExponentialSplit;
+use std::ops::SubAssign;
+use crate::{ODESolver, AdaptiveODESolver};
 use crate::from_f64;
-use crate::RealField;
 
 ///
 /// Evaluates the linear combination of operators k := a.m dt
@@ -162,7 +162,7 @@ where
 }
 
 
-impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
+impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
     where       Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
                 NormFn: FnMut(&V) -> T,
                 Sp : ExponentialSplit<T, S, V>,
@@ -195,37 +195,6 @@ impl<Sp, Fun, NormFn, S, V, T> ODESolverBase for ExpCFMSolver<Sp, Fun, NormFn, S
                     self.alph_err.as_ref().map(|a|a.view()))
     }
 
-}
-
-impl<Sp, Fun, NormFn, S, V, T> ODESolver for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>
-    where       Fun: FnMut(&[T],(T,T)) -> Vec<Sp::L>,
-                NormFn: FnMut(&V) -> T,
-                Sp : ExponentialSplit<T, S, V>,
-                T: RealField ,
-                S: Copy + From<T>,
-                V: Clone + for <'b> SubAssign<&'b V>
-{
-
-    // fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
-    //     let step = step.map_dt(|dt| {
-    //         self.ode_data_mut().next_dt = dt.clone();
-    //         self.try_step(dt)});
-    //     let ad = &mut self.adaptive_dat;
-    //     if let ODEStep::Step(_) = step.clone(){
-    //         ad.dx_norm = (self.norm)(&ad.dx);
-    //         let f = ad.rtol / ad.dx_norm;
-    //         let fp_lim =T::min( T::max(ad.step_size_mul(f) , from_f64!(T, &0.3) ), from_f64!(T, &2.0));
-    //         let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
-    //
-    //         self.dat.update_step_size(new_h);
-    //
-    //         if f <= from_f64!(T, &1.0){
-    //             return ODEStep::Reject;
-    //         }
-    //     }
-    //
-    //     step
-    // }
 }
 
 impl<Sp, Fun, NormFn, S, V, T> AdaptiveODESolver<T> for ExpCFMSolver<Sp, Fun, NormFn, S, V, T>

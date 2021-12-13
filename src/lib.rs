@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate ndarray;
 
+pub mod lc;
 mod base;
 mod dat;
 pub mod exp;
@@ -11,6 +12,7 @@ pub mod impls;
 pub mod diff;
 mod quad;
 pub use base::*;
+pub use lc::{LinearCombination, VecODELinearCombination};
 use std::fmt::Display;
 use num_traits::{FromPrimitive, Num};
 use num_complex::{Complex64, Complex};

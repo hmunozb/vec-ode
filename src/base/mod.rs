@@ -1,10 +1,7 @@
 extern crate num_complex;
 
-mod ode;
-mod rk;
+pub mod ode;
+pub mod rk;
 
 pub use ode::*;
-pub use rk::RK45Solver;
-pub use rk::LinearCombination;
-pub use rk::NormedLinearCombination;
-pub use rk::LinearCombinationSpace;
+pub use rk::{RK45Solver, RK45ComplexSolver, RK45RealSolver, RK45SolverDefaultLC};

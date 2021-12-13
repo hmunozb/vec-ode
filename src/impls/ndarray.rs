@@ -1,10 +1,12 @@
-use simba::scalar::{ClosedAdd, ClosedMul, ClosedSub};
+//use alga::general::{ClosedAdd, ClosedMul, ClosedSub};
+use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign};
+use ndarray::LinalgScalar;
 use ndarray::{ArrayBase, DataMut, Dimension, ScalarOperand};
 
-use crate::LinearCombinationSpace;
+use crate::lc::LinearCombinationSpace;
 
 impl<A, S, D> LinearCombinationSpace<A> for ArrayBase<S, D>
-where   A: Copy + ClosedAdd + ClosedSub + ClosedMul + ScalarOperand,
+where   A: Copy + Add<Output=A> + AddAssign + SubAssign + Mul<Output=A> + MulAssign + ScalarOperand,
         S: DataMut<Elem=A>,
         D: Dimension
 {

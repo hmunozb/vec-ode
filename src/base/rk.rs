@@ -1,123 +1,22 @@
-use std::marker::PhantomData;
-use std::ops::{AddAssign, Mul, MulAssign, SubAssign};
 
+use std::ops::{AddAssign, MulAssign, Mul, SubAssign};
+use crate::lc::LinearCombination;
 use itertools::Itertools;
-use itertools::zip_eq;
-use ndarray::{Array1, Array2, Ix1};
-use ndarray::iter::Lanes;
-use num_complex::Complex;
-use num_traits::Float;
 
-use crate::{AdaptiveODESolver, ODEAdaptiveData, ODEData, ODEError, ODESolverBase};
-use crate::base::ode::Normed;
-use crate::dat::rk::{RK45_AC, RK45_B, RK45_BERR};
+//use alga::general::{RealField, ClosedAdd};
 use crate::RealField;
 
-use super::ode::ODESolver;
+use ndarray::{Ix1, Array1, Array2};
+use std::marker::PhantomData;
+use crate::{ODESolver, ODEData, ODEError, ODEAdaptiveData, AdaptiveODESolver};
+use crate::base::ode::Normed;
+use crate::dat::rk::{RK45_AC, RK45_B, RK45_BERR};
+use ndarray::iter::Lanes;
+use super::num_complex::Complex;
 
-pub trait LinearCombination<S: Copy, V>  {
+use itertools::zip_eq;
+use num_traits::Float;
 
-    fn scale(v: &mut V, k: S);
-    fn scalar_multiply_to(v: &V, k: S, target: &mut V);
-    fn add_scalar_mul(v: &mut V, k: S, other: &V);
-    fn add_assign_ref(v: &mut V, other: &V);
-    fn delta(v: &mut V, y: &V);
-    fn linear_combination<S2: Copy + Into<S>>(v: &mut V, v_arr: &[V], k_arr: &[S2]){
-        if v_arr.is_empty() || k_arr.is_empty(){
-            panic!("linear_combination: slices cannot be empty")
-        }
-        if v_arr.len() != k_arr.len(){
-            panic!("linear_combination: slices must be the same length")
-        }
-
-        let (v0, v_arr) = v_arr.split_at(1);
-        let (k0, k_arr) = k_arr.split_at(1);
-
-        Self::scalar_multiply_to(&v0[0], k0[0].clone().into(), v);
-        for (vi, &k) in v_arr.iter().zip(k_arr.iter()){
-            Self::add_scalar_mul(v, k.into(), vi);
-        }
-    }
-
-    fn linear_combination_iter<'a, IV, IS, S2:'a + Copy + Into<S>>(
-        v: &'a mut V, v_iter: IV, s_iter: IS
-    ) -> Result<(), ()>
-    where IV: IntoIterator<Item=&'a V>, IS: IntoIterator<Item=&'a S2>
-    {
-        let mut v_iter = v_iter.into_iter();
-        let mut s_iter = s_iter.into_iter();
-        if let (Some(vi), Some(&si)) = (v_iter.next(), s_iter.next()){
-            Self::scalar_multiply_to(vi, si.into(), v);
-        } else {
-            return Err(());
-        }
-        for (vi, &si) in zip_eq(v_iter,s_iter){
-            Self::add_scalar_mul(v, si.into(), vi);
-        }
-
-        Ok(())
-    }
-}
-
-pub trait NormedLinearCombination<T: Copy, S: Copy, V> : LinearCombination<S, V>{
-    fn norm(&self, x: &V) -> T;
-}
-
-
-pub trait LinearCombinationSpace<S>: Sized
-where S:Clone
-{
-    fn scale(&mut self, k: S);
-    fn scalar_multiply_to(&self, k: S, target: &mut Self);
-    fn add_scalar_mul(&mut self, k: S, other: &Self);
-    fn add_assign_ref(&mut self, other: &Self);
-    /// Subtracts the vector y from self
-    fn delta(&mut self, y: &Self);
-
-    fn linear_combination(&mut self, v_arr: &[Self], k_arr: &[S]){
-        if v_arr.is_empty() || k_arr.is_empty(){
-            panic!("linear_combination: slices cannot be empty")
-        }
-        if v_arr.len() != k_arr.len(){
-            panic!("linear_combination: slices must be the same length")
-        }
-
-        let (v0, v_arr) = v_arr.split_at(1);
-        let (k0, k_arr) = k_arr.split_at(1);
-
-        Self::scalar_multiply_to(&v0[0], k0[0].clone(), self);
-        for (v, k) in v_arr.iter().zip(k_arr.iter()){
-            self.add_scalar_mul(k.clone(), v);
-        }
-    }
-}
-
-#[derive(Copy, Clone, Default)]
-pub struct VecODELinearCombination;
-
-impl<S: Copy, V> LinearCombination<S, V> for VecODELinearCombination
-where V: LinearCombinationSpace<S>{
-    fn scale(v: &mut V, k: S) {
-        v.scale(k);
-    }
-
-    fn scalar_multiply_to(v: &V, k: S, target: &mut V) {
-        v.scalar_multiply_to(k, target);
-    }
-
-    fn add_scalar_mul(v: &mut V, k: S, other: & V) {
-        v.add_scalar_mul(k,  other);
-    }
-
-    fn add_assign_ref(v: &mut V, other: &V) {
-        v.add_assign_ref(other);
-    }
-
-    fn delta(v: &mut V, y: &V) {
-        v.delta(y);
-    }
-
-}
 
 
 #[derive(Debug)]
@@ -365,7 +264,7 @@ impl<'a,V,S,Fun,T,LC> RK45Solver<V,Fun,S,T,LC>
 
 }
 
-impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,T,LC>
+impl<V,Fun,S,T,LC> ODESolver for RK45Solver<V,Fun,S,T,LC>
     where T: RealField,
           Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
           V: Clone,
@@ -394,15 +293,6 @@ impl<V,Fun,S,T,LC> ODESolverBase for RK45Solver<V,Fun,S,T,LC>
     }
 
 }
-impl<V,Fun,S,T,LC> ODESolver for RK45Solver<V,Fun,S,T,LC>
-    where T: RealField,
-          Fun: FnMut(T, &V, &mut V) -> Result<(),()>,
-          V: Clone,
-          S: From<T> + Copy,
-          LC: LinearCombination<S, V>
-{
-
-}
 
 impl<V,Fun,S,T,LC> AdaptiveODESolver<T> for RK45Solver<V, Fun, S,T,LC>
     where T: RealField,
@@ -429,73 +319,3 @@ impl<V,Fun,S,T,LC> AdaptiveODESolver<T> for RK45Solver<V, Fun, S,T,LC>
     }
 }
 
-
-#[cfg(test)]
-mod tests{
-    use nalgebra::{DVector, Vector2};
-    use num_complex::Complex64 as c64;
-
-    use crate::ODEState;
-
-    //use super::*;
-    use super::{AdaptiveODESolver, ODESolver, ODESolverBase};
-    use super::{RK45ComplexSolver, RK45RealSolver};
-
-    #[test]
-    fn test_rk45_1(){
-        let g = |_t: f64, x: & Vector2<c64>,  y: &mut Vector2<c64>|{
-            y[0] = - x[0];
-            y[1] =  x[1] * -2.0;
-            Ok(())
-        };
-
-        let x0 = Vector2::new(c64::from(1.0), c64::from(1.0));
-        let mut solver = RK45ComplexSolver::new(g, 0., 2., x0.clone(), 0.0001);
-        while let ODEState::Ok(_) = solver.step() {
-
-        }
-        let (tf, xf) = solver.current();
-        println!("Initial Coditions: t0 = {},\n x0 = {}", 0.0, x0);
-        println!("Final tf = {}\n xf={}", tf, xf);
-        //println!("RK45 Butche Tableu Data: {}", rk45_tableu.ac);
-
-    }
-
-    #[test]
-    fn test_rk45_2(){
-        let g = |_t: f64, x: & DVector<f64>,  y: &mut DVector<f64>|{
-            y[0] = - x[0];
-            y[1] = -2.0 * x[1];
-            Ok(())
-        };
-        let x0 = DVector::from_column_slice(&[1.0, 1.0]);
-        let mut solver = RK45RealSolver::new(g, 0., 2., x0.clone(), 0.0001);
-        while let ODEState::Ok(_) = solver.step() {
-
-        }
-        let (tf, xf) = solver.current();
-        println!("Initial Coditions: t0 = {},\n x0 = {}", 0.0, x0);
-        println!("Final tf = {}\n xf={}", tf, xf);
-        //println!("RK45 Butche Tableu Data: {}", rk45_tableu.ac);
-
-    }
-
-    #[test]
-    fn test_rk45_f64(){
-        let g = |_t: f64, x: & f64,  y: &mut f64|{
-            *y = - *x;
-            Ok(())
-        };
-        let x0 :f64 = 1.0;
-        let mut solver = RK45RealSolver::new(g, 0., 2., x0, 0.0001)
-            .with_tolerance(1.0e-10, 1.0e-10);
-        while let ODEState::Ok(_) = solver.step_adaptive() {
-
-        }
-        let (tf, xf) = solver.current();
-        println!("Initial Coditions: t0 = {},\n x0 = {}", 0.0, x0);
-        println!("Final tf = {}\n xf={}", tf, xf);
-
-    }
-
-}

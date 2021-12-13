@@ -205,7 +205,7 @@ where V: Clone, T: RealField {
     }
 }
 
-pub trait ODESolverBase: Sized{
+pub trait ODESolver: Sized{
     type TField: RealField;
     type RangeType: Clone;
 
@@ -235,9 +235,6 @@ pub trait ODESolverBase: Sized{
     fn checkpoint(&mut self, end: bool){
         self.ode_data_mut().checkpoint_update(end);
     }
-}
-
-pub trait ODESolver : ODESolverBase{
 
     /// If stepping, update the ode_data with the step size and attempt the step
     /// For adaptive solvers, this should be overwritten to determine whether to reject

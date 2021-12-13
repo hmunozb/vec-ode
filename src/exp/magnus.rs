@@ -1,10 +1,11 @@
-use std::marker::PhantomData;
-use std::ops::{AddAssign, MulAssign, SubAssign};
-
-use crate::{AdaptiveODESolver, LinearCombination, ODEAdaptiveData, ODEData, ODEError, ODESolver, ODESolverBase, ODEState, ODEStep};
-use crate::exp::{Commutator, ExponentialSplit, NormedExponentialSplit};
-use crate::from_f64;
 use crate::RealField;
+use std::ops::{MulAssign, AddAssign, SubAssign};
+use crate::lc::LinearCombination;
+use crate::{ODEData, ODEStep, ODEError, ODESolver, ODEState, AdaptiveODESolver, ODEAdaptiveData};
+use std::marker::PhantomData;
+
+use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
+use crate::from_f64;
 
 fn midpoint<Fun, T, S, V, Sp>(
     f: &mut Fun, t: T, x0: &V, xf: &mut V, dt: T, sp: &mut Sp) -> Result<(), ODEError>
@@ -113,7 +114,7 @@ impl<Sp, Fun, S, V, T> MidpointExpLinearSolver<Sp, Fun, S, V, T>
     }
 }
 
-impl<Sp, Fun, S, V, T> ODESolverBase for MidpointExpLinearSolver<Sp, Fun, S, V, T>
+impl<Sp, Fun, S, V, T> ODESolver for MidpointExpLinearSolver<Sp, Fun, S, V, T>
 where       Fun: FnMut(T) -> Sp::L,
             Sp : ExponentialSplit<T, S, V>,
             Sp::L : MulAssign<S>,
@@ -144,17 +145,6 @@ where       Fun: FnMut(T) -> Sp::L,
         midpoint(&mut self.f, dat.t.clone(), &dat.x,
                  &mut dat.next_x, dat.next_dt.clone(), &mut self.sp)
     }
-}
-
-impl<Sp, Fun, S, V, T> ODESolver for MidpointExpLinearSolver<Sp, Fun, S, V, T>
-where  Fun: FnMut(T) -> Sp::L,
-       Sp : ExponentialSplit<T, S, V>,
-       Sp::L : MulAssign<S>,
-       T: RealField,
-       S: Copy + From<T>,
-       V: Clone
-{
-
 }
 
 
@@ -227,7 +217,7 @@ impl<Sp, Fun, S, V, T> MagnusExpLinearSolver<Sp, Fun, S, V, T>
     // }
 }
 
-impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
+impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
     where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
                 Sp : Commutator<T, S, V> + NormedExponentialSplit<T, S, V>,
                 Sp::L : MulAssign<S>
@@ -262,38 +252,6 @@ impl<Sp, Fun, S, V, T> ODESolverBase for MagnusExpLinearSolver<Sp, Fun, S, V, T>
 
     }
 
-}
-
-impl<Sp, Fun, S, V, T> ODESolver for MagnusExpLinearSolver<Sp, Fun, S, V, T>
-    where       Fun: FnMut(&[T]) -> Vec<Sp::L>,
-                Sp : Commutator<T, S, V> + NormedExponentialSplit<T, S, V>,
-                Sp::L : MulAssign<S>
-                + for <'b> AddAssign<&'b Sp::L>,
-                T: RealField,
-                S: Copy + From<T>,
-                V: Clone + for <'b> SubAssign<&'b V>
-{
-    // fn handle_try_step(&mut self, step: ODEStep<T>)-> ODEStep<T>{
-    //     let step = step.map_dt(|dt| {
-    //         self.ode_data_mut().next_dt = dt.clone();
-    //         self.try_step(dt)});
-    //
-    //     if let ODEStep::Step(_) = step.clone(){
-    //         self.err = self.sp.norm(&self.x_err);
-    //         let f = self.rtol / self.err;
-    //         //let new_h = from_f64!(T, 0.9) * T::powf(f, from_f64!(T, (1.0/3.0))) * self.dat.h;
-    //         let fp_lim =T::min( T::max(ad.step_size_mul(f) , from_f64!(T, 0.3) ),
-    //                             from_f64!(T, 2.0));
-    //         let new_h = T::min(T::max(fp_lim * self.dat.h, ad.min_dt), ad.max_dt);
-    //         self.dat.update_step_size(new_h);
-    //
-    //         if f <= T::one(){
-    //             return ODEStep::Reject;
-    //         }
-    //     }
-    //
-    //     step
-    // }
 }
 
 impl<Sp, Fun, S, V, T> AdaptiveODESolver<T> for MagnusExpLinearSolver<Sp, Fun, S, V, T>

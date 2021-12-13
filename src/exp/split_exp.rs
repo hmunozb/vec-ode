@@ -1,19 +1,21 @@
-use std::marker::PhantomData;
-use std::ops::MulAssign;
 
+use std::ops::{MulAssign};
+use crate::{RealField, from_c64};
+//use alga::general::{SubsetOf};
+use crate::exp::{ExponentialSplit, NormedExponentialSplit, Commutator};
+use crate::exp::cfm::cfm_exp;
+use crate::base::{ODESolver};
+use crate::{ODEData, ODEError};
+use crate::lc::LinearCombinationSpace;
+use std::marker::PhantomData;
+//use nalgebra::{Scalar};
+use ndarray::{ ArrayView2};
 use itertools::Itertools;
-use ndarray::ArrayView2;
 use num_complex::Complex;
 
-use crate::{from_c64, RealField};
-use crate::{ODEData, ODEError, ODESolverBase};
-use crate::base::ODESolver;
-use crate::base::LinearCombinationSpace;
-//use alga::general::{SubsetOf};
-use crate::exp::{Commutator, ExponentialSplit, NormedExponentialSplit};
-use crate::exp::cfm::cfm_exp;
+use crate::lc::LinearCombination;
 use crate::from_f64;
-use crate::LinearCombination;
+
 
 /// Defines an exponential split exp(A+B), where A and B are known to be
 /// commutative operator, and performs an exponential action exp(A) exp(B)
@@ -645,7 +647,7 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
     }
 }
 
-impl<SpA, SpB, Fun, S, V, T> ODESolverBase
+impl<SpA, SpB, Fun, S, V, T> ODESolver
 for ExpSplitMidpointSolver<SpA, SpB, Fun, S, V, T>
 where Fun: FnMut(T) -> (SpA::L, SpB::L),
       SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
@@ -682,18 +684,6 @@ where Fun: FnMut(T) -> (SpA::L, SpB::L),
 
 }
 
-impl<SpA, SpB, Fun, S, V, T> ODESolver
-for ExpSplitMidpointSolver<SpA, SpB, Fun, S, V, T>
-    where Fun: FnMut(T) -> (SpA::L, SpB::L),
-          SpA :ExponentialSplit<T, S, V>, SpB :ExponentialSplit<T, S, V>,
-          //SpA::L : LinearCombinationSpace<S>, // MulAssign<S>,
-          //SpB::L : LinearCombinationSpace<S>, // MulAssign<S>,
-          T: RealField,
-          S:  Copy + From<T>,
-          V: Clone
-{
-
-}
 
 pub struct ExpSplitCFMSolver<SpA, SpB, Fun, S, V, T>
     where
